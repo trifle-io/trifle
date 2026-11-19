@@ -53,6 +53,25 @@ defmodule TrifleApp.DesignSystem.PathColorsTest do
     refute html =~ "<img"
   end
 
+  test "optional wrapping prefers separators while preserving text, colors and HTML escaping" do
+    path = ~s|jobs/amazon_api/purchase_automator.Worker:v2-fast/<img src=x onerror="alert(1)">|
+    colors = PathColors.build([path], "/")
+
+    original =
+      PathColors.html(path, colors, "/")
+      |> Phoenix.HTML.safe_to_string()
+      |> Floki.parse_fragment!()
+
+    html = PathColors.html(path, colors, "/", wrap: true) |> Phoenix.HTML.safe_to_string()
+    wrapped = Floki.parse_fragment!(html)
+
+    assert Floki.text(wrapped) == path
+    assert Floki.attribute(wrapped, "span", "style") == Floki.attribute(original, "span", "style")
+    assert html =~ "amazon_<wbr>api/<wbr>"
+    assert html =~ "purchase_<wbr>automator.<wbr>Worker:<wbr>v2-<wbr>fast/<wbr>"
+    assert Floki.find(wrapped, "img, script") == []
+  end
+
   test "trace slash coloring preserves full paths, including empty segments" do
     for path <- ["jobs", "jobs/first/deep", "/jobs//first/"] do
       colors = PathColors.build([path, "jobs/another"], "/")

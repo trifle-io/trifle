@@ -57,7 +57,41 @@ defmodule TrifleApp.TracesLive.QueryTest do
            }) == %{}
 
     params = %{"path" => "jobs/test.rb", "reference" => "a&b"}
+    assert URI.parse(Query.url(params)).path == "/traces"
     assert URI.decode_query(URI.parse(Query.url(params)).query) == params
+  end
+
+  test "overview URLs use plain control names and discard collapsed state" do
+    legacy = %{
+      "source_id" => "source",
+      "jobs_sort" => "duration",
+      "jobs_direction" => "asc",
+      "jobs_size" => "15",
+      "jobs_page" => "2",
+      "jobs_collapsed" => "true",
+      "collapsed" => "true"
+    }
+
+    expected = %{
+      "source_id" => "source",
+      "sort" => "duration",
+      "direction" => "asc",
+      "page" => "2"
+    }
+
+    assert Query.params(legacy) == expected
+    assert URI.decode_query(URI.parse(Query.url(legacy)).query) == expected
+    refute Map.has_key?(Query.params(Map.put(legacy, "size", "3")), "size")
+
+    scoped =
+      Query.path_url(expected, "jobs/worker")
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+
+    refute Map.has_key?(scoped, "page")
+    assert scoped["path"] == "jobs/worker"
+    assert scoped["sort"] == "duration"
   end
 
   test "expanded detail is a URL preference, never a storage filter or range change" do

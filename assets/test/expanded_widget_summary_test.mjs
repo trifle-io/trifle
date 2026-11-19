@@ -64,7 +64,7 @@ test('summary cells and tooltips attach percent signs without a space', () => {
   }
 });
 
-test('trace overview puts measurements in rows and timestamps in columns', () => {
+test('trace overview uses the shared summary columns for every measurement', () => {
   const view = hook();
   view.seriesColor = () => '#000';
   let rows, columns;
@@ -76,21 +76,29 @@ test('trace overview puts measurements in rows and timestamps in columns', () =>
       {at: 3600000, count: 0, states: {success: 0, error: 0}, duration: null, lines: null}
     ]
   });
-  assert.deepEqual(columns.map(column => column.field), ['path', 'point_0', 'point_1']);
-  assert.match(columns[1].headerName, /04:00:00/);
-  assert.match(columns[2].headerName, /05:00:00/);
-  assert.match(columns[1].headerTooltip, /Asia\/Dubai/);
+  assert.deepEqual(columns.map(column => column.headerName),
+    ['Path', 'Mean', 'Sum', 'Max', 'Min', 'Oldest', 'Latest']);
+  assert.deepEqual(columns.map(column => column.field),
+    ['path', 'mean', 'sum', 'max', 'min', 'oldest', 'latest']);
   assert.equal(columns[0].pinned, 'left');
-  assert.equal(rows.find(row => row.path === 'Success').point_0, 4);
-  assert.equal(rows.find(row => row.path === 'Error').point_0, 1);
-  assert.equal(rows.find(row => row.path === 'Avg lines').point_0, 0);
-  assert.equal(rows.find(row => row.path === 'Avg duration (ms)').point_1, null);
-  assert.equal(columns[1].valueFormatter({value: 12.3456789}), '12.3456789');
-  assert.equal(columns[1].valueFormatter({value: 0}), '0');
-  assert.equal(columns[1].valueFormatter({value: null}), '—');
+  assert.deepEqual(rows.find(row => row.path === 'Traces'), {
+    path: 'Traces', color: '#000', unit: undefined,
+    mean: 2.5, sum: 5, max: 5, min: 0, oldest: 5, latest: 0
+  });
+  assert.equal(rows.find(row => row.path === 'Success').sum, 4);
+  assert.equal(rows.find(row => row.path === 'Error').sum, 1);
+  assert.deepEqual(rows.find(row => row.path === 'Avg lines'), {
+    path: 'Avg lines', color: '#000', unit: undefined,
+    mean: 0, sum: 0, max: 0, min: 0, oldest: 0, latest: 0
+  });
+  const duration = rows.find(row => row.path === 'Avg duration (ms)');
+  for (const field of ['mean', 'sum', 'max', 'min', 'oldest', 'latest']) {
+    assert.equal(duration[field], 12.3456789, `missing duration buckets are skipped for ${field}`);
+    assert.equal(rows.find(row => row.path === 'Duration samples')[field], null);
+  }
 });
 
-test('long trace timelines have bounded columns and every raw bucket remains reachable', () => {
+test('trace summaries cover the entire timeframe with a fixed number of columns', () => {
   const view = hook();
   view.seriesColor = () => '#000';
   let rows, columns;
@@ -98,19 +106,16 @@ test('long trace timelines have bounded columns and every raw bucket remains rea
   const data = {presentation: 'trace_overview', states: [],
     points: Array.from({length: 1440}, (_, index) => ({at: index * 600000, count: index}))};
   view.renderTimeseriesTable(data);
-  const seen = [];
-  for (let page = 0; page < 30; page++) {
-    assert.equal(columns.length, 49);
-    const traces = rows.find(row => row.path === 'Traces');
-    columns.slice(1).forEach(column => seen.push(traces[column.field]));
-    view.changeTraceTablePage(1);
-  }
-  assert.deepEqual(seen, Array.from({length: 1440}, (_, index) => index));
-  assert.equal(view.traceTablePage, 29);
-  view.changeTraceTablePage(-100);
-  assert.equal(view.traceTablePage, 0);
-  view.changeTraceTablePage(100);
+  assert.equal(columns.length, 7);
+  assert.deepEqual(rows.find(row => row.path === 'Traces'), {
+    path: 'Traces', color: '#000', unit: undefined,
+    mean: 719.5, sum: 1036080, max: 1439, min: 0, oldest: 0, latest: 1439
+  });
+
   view.renderTimeseriesTable({...data, points: data.points.slice(0, 3)});
-  assert.equal(view.traceTablePage, 0);
-  assert.equal(columns.length, 4);
+  assert.equal(columns.length, 7);
+  assert.deepEqual(rows.find(row => row.path === 'Traces'), {
+    path: 'Traces', color: '#000', unit: undefined,
+    mean: 1, sum: 3, max: 2, min: 0, oldest: 0, latest: 2
+  });
 });

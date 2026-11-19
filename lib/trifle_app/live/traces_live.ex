@@ -15,6 +15,8 @@ defmodule TrifleApp.TracesLive do
     do: {:ok, redirect(socket, to: ~p"/organization/profile")}
 
   def mount(_params, _session, socket) do
+    connect_params = if connected?(socket), do: get_connect_params(socket) || %{}, else: %{}
+
     {:ok,
      assign(socket,
        page_title: "Traces",
@@ -29,6 +31,11 @@ defmodule TrifleApp.TracesLive do
        overview_state: nil,
        overview_rows: nil,
        overview_controls: nil,
+       overview_collapsed: false,
+       overview_preferences: %{
+         rows: Overview.row_count(connect_params["trace_overview_rows"]),
+         columns: 3
+       },
        activity_input: nil,
        activity_version: 0,
        activity_scope: nil,
@@ -65,14 +72,22 @@ defmodule TrifleApp.TracesLive do
   end
 
   @impl true
+  def handle_params(params, _uri, %{assigns: %{live_action: :overview}} = socket) do
+    {:noreply, redirect(socket, to: Query.url(Query.params(params)))}
+  end
+
   def handle_params(params, _uri, socket) do
-    params = Query.params(params)
+    if Enum.any?(
+         ~w(jobs_sort jobs_direction jobs_size jobs_page jobs_collapsed size),
+         &Map.has_key?(params, &1)
+       ) do
+      {:noreply, redirect(socket, to: Query.url(params))}
+    else
+      load_params(Query.params(params), socket)
+    end
+  end
 
-    params =
-      if socket.assigns.live_action == :overview,
-        do: Map.put(params, "_view", "overview"),
-        else: params
-
+  defp load_params(params, socket) do
     id = params["source_id"] || List.first(socket.assigns.sources) |> source_id()
     params = if id, do: Map.put(params, "source_id", id), else: params
 
@@ -145,24 +160,66 @@ defmodule TrifleApp.TracesLive do
     patch(
       socket,
       socket.assigns.params
-      |> Map.merge(Map.take(params, ~w(jobs_sort jobs_direction jobs_size)))
-      |> Map.delete("jobs_page")
+      |> Map.merge(Map.take(params, ~w(sort)))
+      |> Map.delete("page")
+    )
+  end
+
+  def handle_event("overview_rows", %{"delta" => delta}, socket) when delta in ["-1", "1"] do
+    preferences = socket.assigns.overview_preferences
+    rows = (preferences.rows + String.to_integer(delta)) |> max(1) |> min(100)
+
+    if socket.assigns.query && rows != preferences.rows do
+      socket
+      |> assign(:overview_preferences, %{preferences | rows: rows})
+      |> push_event("trace_overview_rows", %{rows: rows})
+      |> reset_overview_page()
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("overview_rows", _, socket), do: {:noreply, socket}
+
+  def handle_event("overview_columns", %{"columns" => columns}, socket) when columns in 1..3 do
+    preferences = socket.assigns.overview_preferences
+
+    if socket.assigns.query && columns != preferences.columns do
+      socket
+      |> assign(:overview_preferences, %{preferences | columns: columns})
+      |> reset_overview_page()
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("overview_columns", _, socket), do: {:noreply, socket}
+
+  def handle_event("toggle_overview_direction", _, socket) do
+    direction =
+      if Overview.controls(socket.assigns.params).direction == "asc", do: "desc", else: "asc"
+
+    patch(
+      socket,
+      socket.assigns.params
+      |> Map.put("direction", direction)
+      |> Map.delete("page")
     )
   end
 
   def handle_event("overview_page", %{"page" => page}, socket),
-    do: patch(socket, Map.put(socket.assigns.params, "jobs_page", page))
+    do: patch(socket, Map.put(socket.assigns.params, "page", page))
 
-  def handle_event("toggle_overview", _, socket),
-    do:
-      patch(
-        socket,
-        Map.put(
-          socket.assigns.params,
-          "jobs_collapsed",
-          to_string(socket.assigns.params["jobs_collapsed"] != "true")
-        )
-      )
+  def handle_event("toggle_overview", _, socket) do
+    if socket.assigns.query do
+      {:noreply,
+       socket
+       |> assign(:overview_collapsed, !socket.assigns.overview_collapsed)
+       |> rebuild_activity()}
+    else
+      {:noreply, socket}
+    end
+  end
 
   def handle_event("apply_activity_filters", params, socket) do
     apply_scoped_filters(socket, Map.take(params, ~w(path state)))
@@ -191,15 +248,10 @@ defmodule TrifleApp.TracesLive do
     end
   end
 
-  def handle_event("expand_widget", %{"id" => "trace-activity"}, socket) do
-    {:noreply,
-     assign(socket, expanded_widget: if(socket.assigns.source, do: "trace-activity", else: nil))}
-  end
-
   def handle_event("expand_widget", %{"id" => id}, socket) do
     rows = if socket.assigns.overview, do: socket.assigns.overview.rows, else: []
 
-    if socket.assigns.live_action == :overview &&
+    if socket.assigns.source &&
          Enum.any?(rows, &(TrifleApp.Components.TraceOverview.widget_id(&1.path) == id)),
        do: {:noreply, socket |> assign(expanded_widget: id) |> update_expanded_overview()},
        else: {:noreply, socket}
@@ -370,10 +422,9 @@ defmodule TrifleApp.TracesLive do
 
   defp finish(:activity, {:error, _}, socket) do
     message =
-      if socket.assigns.live_action == :overview && socket.assigns.overview &&
-           socket.assigns.overview.rows != [],
-         do: "Activity could not be refreshed. Showing the last available values.",
-         else: "Activity is unavailable. Refresh to retry."
+      if socket.assigns.overview && socket.assigns.overview.rows != [],
+        do: "Activity could not be refreshed. Showing the last available values.",
+        else: "Activity is unavailable. Refresh to retry."
 
     assign(socket, activity_loading: false, activity_error: message)
   end
@@ -484,58 +535,54 @@ defmodule TrifleApp.TracesLive do
   defp rebuild_activity(socket) do
     q = socket.assigns.query
     state = q.filters[:state]
-    scope = {socket.assigns.activity_version, q.path, state, socket.assigns.live_action}
+    scope = {socket.assigns.activity_version, q.path, state}
     changed? = socket.assigns.activity_scope != scope
 
     socket =
       if changed? do
-        activity =
-          Activity.build(
-            socket.assigns.activity_input,
-            q.path,
-            if(socket.assigns.live_action == :overview, do: nil, else: state)
-          )
+        activity = Activity.build(socket.assigns.activity_input, q.path)
 
         assign(socket, activity: activity, activity_scope: scope, overview_rows: nil)
       else
         socket
       end
 
+    controls =
+      socket.assigns.params
+      |> Overview.controls(socket.assigns.overview_preferences)
+      |> Map.put(:collapsed, socket.assigns.overview_collapsed)
+
     socket =
-      if socket.assigns.live_action == :overview do
-        controls = Overview.controls(socket.assigns.params)
-
-        if changed? || controls != socket.assigns.overview_controls do
-          if controls.collapsed do
-            assign(socket,
-              overview_controls: controls,
-              overview:
-                Overview.collapsed(
-                  socket.assigns.activity_input,
-                  q.path,
-                  state,
-                  socket.assigns.params,
-                  socket.assigns.activity
-                )
-            )
-          else
-            rows =
-              socket.assigns.overview_rows ||
-                Overview.prepare(
-                  socket.assigns.activity_input,
-                  q.path,
-                  state,
-                  socket.assigns.activity
-                )
-
-            assign(socket,
-              overview_rows: rows,
-              overview_controls: controls,
-              overview: Overview.paginate(rows, socket.assigns.params)
-            )
-          end
+      if changed? || controls != socket.assigns.overview_controls do
+        if controls.collapsed do
+          assign(socket,
+            overview_controls: controls,
+            overview:
+              Overview.collapsed(
+                socket.assigns.activity_input,
+                q.path,
+                state,
+                socket.assigns.params,
+                socket.assigns.activity,
+                socket.assigns.overview_preferences
+              )
+          )
         else
-          socket
+          rows =
+            socket.assigns.overview_rows ||
+              Overview.prepare(
+                socket.assigns.activity_input,
+                q.path,
+                state,
+                socket.assigns.activity
+              )
+
+          assign(socket,
+            overview_rows: rows,
+            overview_controls: controls,
+            overview:
+              Overview.paginate(rows, socket.assigns.params, socket.assigns.overview_preferences)
+          )
         end
       else
         socket
@@ -547,7 +594,7 @@ defmodule TrifleApp.TracesLive do
 
   defp update_expanded_overview(socket) do
     row =
-      if socket.assigns.live_action == :overview && socket.assigns.expanded_widget do
+      if socket.assigns.expanded_widget do
         Enum.find(
           socket.assigns.overview_rows || [],
           &(TrifleApp.Components.TraceOverview.widget_id(&1.path) ==
@@ -668,17 +715,21 @@ defmodule TrifleApp.TracesLive do
        Application.get_env(:trifle, :trace_reader, Reader)}
 
   defp patch(socket, params) do
-    params =
-      if socket.assigns.live_action == :overview,
-        do: Map.put(params, "_view", "overview"),
-        else: params
-
     changed =
       Map.take(params, ~w(source_id path state timeframe granularity from to)) !=
         Map.take(socket.assigns.params, ~w(source_id path state timeframe granularity from to))
 
-    params = if changed, do: Map.delete(params, "jobs_page"), else: params
+    params = if changed, do: Map.delete(params, "page"), else: params
     {:noreply, push_patch(socket, to: Query.url(params))}
+  end
+
+  defp reset_overview_page(socket) do
+    if Map.has_key?(socket.assigns.params, "page") do
+      {:noreply,
+       push_patch(socket, to: Query.url(Map.delete(socket.assigns.params, "page")), replace: true)}
+    else
+      {:noreply, rebuild_activity(socket)}
+    end
   end
 
   defp apply_scoped_filters(socket, filters) do
@@ -728,7 +779,6 @@ defmodule TrifleApp.TracesLive do
         <div class="traces-scrollport">
           <div class="traces-content">
             <TrifleApp.Components.TraceOverview.content
-              :if={@live_action == :overview}
               overview={@overview}
               params={@overview_params}
               path_colors={@path_colors}
@@ -736,16 +786,6 @@ defmodule TrifleApp.TracesLive do
               error={@activity_error}
               timezone={@query.config.time_zone}
               state={@overview_state}
-            />
-            <View.activity
-              :if={@live_action != :overview}
-              activity={@activity}
-              path={@query.path}
-              state={@query.filters[:state]}
-              loading={@activity_loading}
-              error={@activity_error}
-              timezone={@query.config.time_zone}
-              presentation="widget"
             />
             <div
               id="trace-panels"
@@ -795,17 +835,6 @@ defmodule TrifleApp.TracesLive do
           row={@expanded_overview_row}
           timezone={@query.config.time_zone}
           path_colors={@path_colors}
-        />
-        <View.activity
-          :if={@expanded_widget == "trace-activity"}
-          activity={@activity}
-          path={@query.path}
-          state={@query.filters[:state]}
-          loading={@activity_loading}
-          error={@activity_error}
-          timezone={@query.config.time_zone}
-          expanded={true}
-          presentation="expanded"
         />
       <% else %>
         <div class="mx-auto max-w-xl py-16">

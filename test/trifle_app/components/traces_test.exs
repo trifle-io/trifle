@@ -151,7 +151,11 @@ defmodule TrifleApp.Components.TracesTest do
 
   test "detail actions use accessible expand and close icons aligned on the right" do
     [widget_button] =
-      activity(expanded: false)
+      render_component(&TrifleApp.DesignSystem.IconButton.icon_button/1,
+        icon: "hero-arrows-pointing-out",
+        label: "Expand trace overview",
+        class: "grid-widget-expand"
+      )
       |> Floki.parse_document!()
       |> Floki.find(".grid-widget-expand")
 
@@ -1430,7 +1434,8 @@ defmodule TrifleApp.Components.TracesTest do
       assert Floki.text(path_element) |> String.trim() == path
       [path_class] = Floki.attribute(path_element, "class")
       assert "min-w-0" in String.split(path_class)
-      assert "[overflow-wrap:anywhere]" in String.split(path_class)
+      assert "trace-path-label" in String.split(path_class)
+      assert Floki.find(path_element, "wbr") != []
       refute "break-all" in String.split(path_class)
       assert Floki.find(path_element, "script") == []
 
@@ -1526,60 +1531,6 @@ defmodule TrifleApp.Components.TracesTest do
              []
   end
 
-  test "compact activity omits explanatory text, color labels and event counters" do
-    for loading <- [false, true] do
-      html = activity(loading: loading, expanded: false)
-      refute html =~ "Source, timeframe, path and state"
-      refute html =~ "Tags and duration filter only the list below"
-      refute html =~ "Activity state colors"
-      refute html =~ "recorded events"
-      assert html =~ "traces-dashboard-grid"
-
-      assert Floki.find(
-               Floki.parse_document!(html),
-               "#traces-dashboard-grid[data-hide-on-patch='false']"
-             ) != []
-    end
-  end
-
-  test "activity uses shared initial loading states and clears expanded data" do
-    html = activity(loading: true)
-    assert html =~ "Loading activity"
-    assert html =~ ~s(data-widget-loading-state="initial")
-    doc = Floki.parse_document!(html)
-    assert Floki.attribute(doc, "#expanded-widget-trace-activity", "data-chart") == []
-  end
-
-  test "activity widget and expanded modal can render in separate layout contexts" do
-    widget = activity(presentation: "widget") |> Floki.parse_document!()
-    expanded = activity(presentation: "expanded") |> Floki.parse_document!()
-
-    assert Floki.find(widget, "section[aria-label='Trace activity'] #traces-dashboard-grid") != []
-    assert Floki.find(widget, "#traces-expanded-widget") == []
-
-    assert Floki.find(expanded, "#traces-dashboard-grid, section[aria-label='Trace activity']") ==
-             []
-
-    assert Floki.find(expanded, "#traces-expanded-widget #expanded-widget-trace-activity") != []
-  end
-
-  test "storage errors remain visible beside the widget and in its expanded view" do
-    html = activity(error: "Activity is unavailable. Refresh to retry.")
-    doc = Floki.parse_document!(html)
-    assert length(Floki.find(doc, "[role='status']")) == 2
-    assert Floki.text(Floki.find(doc, "#traces-expanded-widget")) =~ "Activity is unavailable."
-  end
-
-  test "expanded titles and literal series names are escaped" do
-    path = "jobs/<script>App.Worker</script>"
-    data = %{series: [%{name: path, data: [[1_700_000_000_000, 1]]}], paths: [path], total: 1}
-    html = activity(path: path, activity: data)
-    doc = Floki.parse_document!(html)
-    assert Floki.find(doc, "script") == []
-    [chart] = Floki.attribute(doc, "#expanded-widget-trace-activity", "data-chart")
-    assert hd(Jason.decode!(chart)["series"])["name"] == path
-  end
-
   defp trace_list(trace_overrides, overrides \\ []) do
     trace =
       Map.merge(
@@ -1607,18 +1558,5 @@ defmodule TrifleApp.Components.TracesTest do
 
     render_component(&Traces.list/1, Map.merge(assigns, Map.new(overrides)))
     |> Floki.parse_document!()
-  end
-
-  defp activity(overrides) do
-    assigns = %{
-      activity: %{series: [], paths: [], total: 0},
-      path: nil,
-      loading: false,
-      error: nil,
-      timezone: "Etc/UTC",
-      expanded: true
-    }
-
-    render_component(&Traces.activity/1, Map.merge(assigns, Map.new(overrides)))
   end
 end

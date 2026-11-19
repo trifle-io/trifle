@@ -4,6 +4,11 @@ import { formatCompactNumber, formatCompactDuration } from "../../../utils/forma
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 export const compactNumber = value => numeric(value) ? formatCompactNumber(value).toLowerCase() : '—';
 export const gaugeMeasurement = (value, unit = '') => unit === 'ms' ? formatCompactDuration(value) : {value: compactNumber(value), unit};
+export const gaugeValueParts = (value, unit = '') => {
+  const label = gaugeMeasurement(value, unit);
+  const match = unit === '' && label.value.match(/^(.+?)([kmbt])$/i);
+  return match ? {value: match[1], unit: match[2]} : label;
+};
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateLabel = (at, timezone) => {
   try { return new Intl.DateTimeFormat('en', {timeZone: timezone || 'UTC', dateStyle: 'short', timeStyle: 'short'}).format(new Date(at)); } catch (_) { return ''; }
@@ -51,7 +56,7 @@ export function fitGaugeValue(element, target) {
   const fontSize = parseFloat(getComputedStyle(label).fontSize);
   const width = Math.max(reading.scrollWidth || 0, reading.getBoundingClientRect().width);
   if (!fontSize || !width) return;
-  // The full icon/value row must fit inside the arc at the top of the text.
+  // The number must fit inside the arc at the top of the text.
   const innerRadius = Math.max(0, Math.min(target.clientWidth, target.clientHeight) * 0.65 - 8);
   const fittedSize = Math.min(fontSize, 2 * innerRadius / Math.sqrt((width / fontSize) ** 2 + 4));
   if (fittedSize < fontSize) label.style.fontSize = `${fittedSize}px`;
@@ -100,11 +105,12 @@ export function compactChartOptions(payload, dark = false, size = {width: 120, h
     const formatter = () => `${payload.title ? '<strong>' + escape(payload.title) + '</strong><br/>' : ''}Latest: ${labelText(latestLabel)}<br/>Average: ${labelText(averageLabel)}${latest_at != null ? '<br/>' + escape(dateLabel(latest_at, payload.timezone)) : ''}`;
     const max = numeric(maximum) && maximum > 0 ? maximum : Math.max(1, 1.2 * Math.max(average || 0, latest || 0));
     const valueColor = gaugeComparisonColor(payload, dark);
+    const averageColor = dark ? '#64748b' : '#94a3b8';
     const marker = Math.max(0, Math.min(1, (latest || 0) / max));
-    const base = {type: 'gauge', min: 0, max, startAngle: 180, endAngle: 0, center: ['50%', payload.compact ? baseline : '70%'], radius: payload.compact ? radius : '94%', splitLine: {show: false}, axisTick: {show: false}, axisLabel: {show: false}, anchor: {show: false}, title: {show: false}, detail: {show: false}, animation: false};
+    const base = {type: 'gauge', z: 2, min: 0, max, startAngle: 180, endAngle: 0, center: ['50%', payload.compact ? baseline : '70%'], radius: payload.compact ? radius : '94%', splitLine: {show: false}, axisTick: {show: false}, axisLabel: {show: false}, anchor: {show: false}, title: {show: false}, detail: {show: false}, animation: false};
     return {animation: false, backgroundColor: 'transparent', tooltip: {...compactTooltip(element), formatter}, series: [
-      {...base, axisLine: {lineStyle: {width: 6, color: [[1, dark ? '#334155' : '#e2e8f0']]}}, progress: {show: numeric(average), width: 6, itemStyle: {color: valueColor}}, pointer: {show: false}, data: numeric(average) ? [{value: average}] : []},
-      {...base, axisLine: {show: numeric(latest), lineStyle: {width: 10, color: [[Math.max(0, marker - 0.012), 'transparent'], [Math.min(1, marker + 0.012), text], [1, 'transparent']]}}, pointer: {show: false}, data: numeric(latest) ? [{value: latest}] : []}
+      {...base, axisLine: {lineStyle: {width: 6, color: [[1, dark ? '#334155' : '#e2e8f0']]}}, progress: {show: numeric(average), width: 6, itemStyle: {color: averageColor}}, pointer: {show: false}, data: numeric(average) ? [{value: average}] : []},
+      {...base, z: 3, axisLine: {show: numeric(latest), lineStyle: {width: 10, color: [[Math.max(0, marker - 0.012), 'transparent'], [Math.min(1, marker + 0.012), valueColor], [1, 'transparent']]}}, pointer: {show: false}, data: numeric(latest) ? [{value: latest}] : []}
     ], graphic: [
       // Keep the comparison readable when hovering the value or empty arc interior.
       ...(payload.compact ? [{type: 'rect', z: 100, cursor: 'default',
@@ -153,7 +159,7 @@ export function registerCompactChartHook(Hooks, {echarts, withChartOpts}) {
         const payload = JSON.parse(this.el.dataset.chart);
         const value = this.el.querySelector('[data-compact-value]');
         if (value && payload.presentation === 'gauge') {
-          const label = gaugeMeasurement(payload.gauge?.latest, payload.gauge?.unit);
+          const label = gaugeValueParts(payload.gauge?.latest, payload.gauge?.unit);
           value.textContent = label.value;
           const unit = this.el.querySelector('[data-compact-unit]');
           if (unit) unit.textContent = label.unit;

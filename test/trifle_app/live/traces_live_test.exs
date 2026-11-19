@@ -294,30 +294,72 @@ defmodule TrifleApp.TracesLiveTest do
     %{conn: log_in_user(conn, user), user: user, database: database, organization: org}
   end
 
-  test "overview keeps trace navigation and controls on its separate route", %{
+  test "legacy trace URLs redirect to clean parameters and preserve filters and selection", %{
     conn: conn,
     database: database
   } do
-    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    params = %{
+      "source_id" => database.id,
+      "path" => "jobs/App.Worker",
+      "state" => "warning",
+      "reference" => "first",
+      "detail" => "expanded",
+      "from" => "2026-09-12T00:00:00",
+      "to" => "2026-09-13T00:00:00",
+      "granularity" => "1h",
+      "jobs_sort" => "name",
+      "jobs_direction" => "asc",
+      "jobs_size" => "15",
+      "jobs_page" => "2",
+      "jobs_collapsed" => "true"
+    }
+
+    conn = get(conn, "/traces/overview?" <> URI.encode_query(params))
+    target = redirected_to(conn)
+    assert URI.parse(target).path == "/traces"
+
+    assert URI.decode_query(URI.parse(target).query) ==
+             params
+             |> Map.drop(~w(jobs_sort jobs_direction jobs_size jobs_page jobs_collapsed))
+             |> Map.merge(%{
+               "sort" => "name",
+               "direction" => "asc",
+               "page" => "2"
+             })
+
+    refute_receive {:trace_activity, _}
+    refute_receive {:trace_search, _}
+
+    assert conn
+           |> recycle()
+           |> get("/traces?" <> URI.encode_query(params))
+           |> redirected_to() == target
+
+    {:ok, view, _} = live(recycle(conn), target)
+    render_async(view)
+    assert has_element?(view, "#trace-overview button[aria-expanded='true']")
+    assert has_element?(view, "#trace-detail", "first")
+    assert has_element?(view, "#trace-detail button[aria-label='Restore split view']")
+    assert has_element?(view, "#trace-filter-path[value='jobs/App.Worker']")
+    assert has_element?(view, "#trace-filter-state option[value='warning'][selected]")
+  end
+
+  test "overview is the default trace view and keeps trace navigation and controls", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
     html = render_async(view)
     assert html =~ "Overview"
     assert has_element?(view, "#trace-overview article", "jobs/App.Worker")
 
-    assert has_element?(
-             view,
-             "#trace-overview .job-overview-status-circle[data-tooltip^='Success rate: 33.3%'][tabindex='0']"
-           )
-
-    assert has_element?(
-             view,
-             "#trace-overview .job-overview-status-circle[data-tooltip='State mix · Success: 33.3% · Warning: 33.3% · Error: 33.3%'][tabindex='0']"
-           )
-
+    refute has_element?(view, "#trace-overview [id^='job-success-rate-']")
+    refute has_element?(view, "#trace-overview [id^='job-state-mix-']")
     refute has_element?(view, "#trace-overview .job-overview-status-circle[title]")
 
     assert has_element?(
              view,
-             "#trace-overview [id^='job-state-pie-'][data-tooltip='State slices · Success: 33.3% · Warning: 33.3% · Error: 33.3%']"
+             "#trace-overview [id^='job-state-pie-'][data-tooltip='State slices · Success: 33.3% · Warning: 33.3% · Error: 33.3%'][tabindex='0']"
            )
 
     refute has_element?(view, "section[aria-label='Trace activity']")
@@ -325,36 +367,51 @@ defmodule TrifleApp.TracesLiveTest do
     assert_receive {:trace_search, _}
 
     view
-    |> form("#trace-overview form", %{jobs_sort: "name", jobs_direction: "asc", jobs_size: "15"})
+    |> form("#trace-overview form", %{sort: "name"})
     |> render_change()
 
     render_async(view)
+    assert_patch(view)
+
+    set_overview_rows(view, 5)
+
+    view |> element("#trace-overview button[aria-label='Sort ascending']") |> render_click()
+    render_async(view)
+    assert_patch(view)
     refute_receive {:trace_activity, _}
     refute_receive {:trace_search, _}
 
     view |> element("#trace-list a[href*='reference=first']") |> render_click()
     render_async(view)
     assert has_element?(view, "#trace-detail")
-    assert_patch(view) =~ "/traces/overview?"
+    patched_url = assert_patch(view)
+    assert URI.parse(patched_url).path == "/traces"
+    patched_params = URI.decode_query(URI.parse(patched_url).query)
+    assert patched_params["sort"] == "name"
+    assert patched_params["direction"] == "asc"
+    refute Map.has_key?(patched_params, "size")
+    refute patched_url =~ "jobs_"
 
     view |> element("button[phx-click='toggle_overview']") |> render_click()
+    refute_patch(view)
     refute has_element?(view, "#job-overview-body")
     refute has_element?(view, "#trace-overview form[phx-change='overview_controls']")
     assert has_element?(view, "#trace-detail")
 
     view |> element("button[phx-click='toggle_overview']") |> render_click()
+    refute_patch(view)
     assert has_element?(view, "#trace-overview form[phx-change='overview_controls']")
 
     assert has_element?(
              view,
-             "#trace-overview select[name='jobs_size'] option[value='15'][selected]"
+             "#trace-overview[data-overview-rows='5']"
            )
   end
 
-  test "overview sends only the current 3, 9, 15 or 30 rows and paginates without fetching again",
+  test "overview sends only the current rows and paginates without fetching again",
        %{conn: conn, database: database} do
     Application.put_env(:trifle, :trace_activity, FakeManyActivity)
-    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
     html = render_async(view)
 
     assert length(overview_cards(html)) == 9
@@ -362,7 +419,7 @@ defmodule TrifleApp.TracesLiveTest do
     assert_receive {:trace_activity, _}
 
     for size <- [3, 15, 30] do
-      view |> form("#trace-overview form", %{jobs_size: to_string(size)}) |> render_change()
+      set_overview_rows(view, div(size, 3))
       html = render_async(view)
       payloads = overview_cards(html)
       assert length(payloads) == size
@@ -373,7 +430,7 @@ defmodule TrifleApp.TracesLiveTest do
                    Floki.parse_fragment!(payload["html"]),
                    "[data-compact-chart]"
                  )
-               ) == 6
+               ) == 4
              end)
 
       refute_receive {:trace_activity, _}
@@ -399,11 +456,153 @@ defmodule TrifleApp.TracesLiveTest do
              Map.new(1..105, &{"jobs/worker-#{&1}", 1})
   end
 
+  test "row preferences restore, increment one at a time and adapt to the visible columns", %{
+    conn: conn,
+    database: database
+  } do
+    Application.put_env(:trifle, :trace_activity, FakeManyActivity)
+    conn = put_connect_params(conn, %{"trace_overview_rows" => 4})
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
+    assert length(overview_cards(render_async(view))) == 12
+    assert_receive {:trace_activity, _}
+    assert_receive {:trace_search, _}
+    refute has_element?(view, "#trace-overview select[name='size']")
+
+    view |> element("#trace-overview button[aria-label='More rows']") |> render_click()
+    assert_push_event(view, "trace_overview_rows", %{rows: 5})
+    assert length(overview_cards(render_async(view))) == 15
+    refute_patch(view)
+
+    view |> element("#trace-overview button[aria-label='Next page']") |> render_click()
+    assert_patch(view)
+    view |> element("#trace-overview button[aria-label='Fewer rows']") |> render_click()
+    assert_push_event(view, "trace_overview_rows", %{rows: 4})
+    params = URI.decode_query(URI.parse(assert_patch(view)).query)
+    refute Map.has_key?(params, "page")
+    refute Map.has_key?(params, "size")
+    assert length(overview_cards(render_async(view))) == 12
+
+    for {columns, expected} <- [{2, 8}, {1, 4}, {3, 12}] do
+      render_click(view, "overview_columns", %{"columns" => columns})
+      assert length(overview_cards(render_async(view))) == expected
+      assert has_element?(view, "#trace-overview[data-overview-rows='4']")
+      refute_patch(view)
+    end
+
+    set_overview_rows(view, 1)
+    assert has_element?(view, "#trace-overview button[aria-label='Fewer rows'][disabled]")
+    assert length(overview_cards(render_async(view))) == 3
+    render_click(view, "overview_rows", %{"delta" => "-1"})
+    render_click(view, "overview_rows", %{"delta" => "1000"})
+    assert has_element?(view, "#trace-overview[data-overview-rows='1']")
+    refute_receive {:trace_activity, _}
+    refute_receive {:trace_search, _}
+
+    # A fresh connection receives the saved cookie through connect params.
+    {:ok, reloaded, _} = live(conn, ~p"/traces?source_id=#{database.id}")
+    assert length(overview_cards(render_async(reloaded))) == 12
+  end
+
+  test "icon controls reverse sorting and page through traces without refetching", %{
+    conn: conn,
+    database: database
+  } do
+    Application.put_env(:trifle, :trace_activity, FakeManyActivity)
+
+    conn = put_connect_params(conn, %{"trace_overview_rows" => 1})
+
+    {:ok, view, _} =
+      live(conn, ~p"/traces?source_id=#{database.id}&sort=name&direction=asc&page=2")
+
+    render_async(view)
+    assert_receive {:trace_activity, _}
+    assert_receive {:trace_search, _}
+    paths = Enum.map(1..105, &"jobs/worker-#{&1}") |> Enum.sort()
+
+    for {action, direction, ordered} <- [
+          {"Sort descending", "desc", Enum.reverse(paths)},
+          {"Sort ascending", "asc", paths}
+        ] do
+      assert has_element?(
+               view,
+               "#trace-overview button[aria-label='#{action}'] svg[aria-hidden='true']"
+             )
+
+      view |> element("#trace-overview button[aria-label='#{action}']") |> render_click()
+      params = URI.decode_query(URI.parse(assert_patch(view)).query)
+      assert params["direction"] == direction
+      assert params["sort"] == "name"
+      refute Map.has_key?(params, "size")
+      refute Map.has_key?(params, "page")
+
+      assert overview_cards(render_async(view)) |> Enum.map(& &1["title"]) ==
+               Enum.take(ordered, 3)
+    end
+
+    assert has_element?(
+             view,
+             "#trace-overview nav [role='group'] button[aria-label='Previous page'][disabled]"
+           )
+
+    assert has_element?(
+             view,
+             "#trace-overview button[aria-label='Next page'][data-tooltip='Next page'] svg"
+           )
+
+    refute has_element?(view, "#trace-overview select[name='direction']")
+
+    view |> element("#trace-overview button[aria-label='Next page']") |> render_click()
+    assert URI.decode_query(URI.parse(assert_patch(view)).query)["page"] == "2"
+
+    assert overview_cards(render_async(view)) |> Enum.map(& &1["title"]) ==
+             Enum.slice(paths, 3, 3)
+
+    view |> element("#trace-overview button[aria-label='Previous page']") |> render_click()
+    assert URI.decode_query(URI.parse(assert_patch(view)).query)["page"] == "1"
+    render_async(view)
+    assert has_element?(view, "#trace-overview button[aria-label='Previous page'][disabled]")
+    refute_receive {:trace_activity, _}
+    refute_receive {:trace_search, _}
+  end
+
+  test "overview collapse stays local across URL changes and resets on a fresh visit", %{
+    conn: conn,
+    database: database
+  } do
+    conn = put_connect_params(conn, %{"trace_overview_rows" => 1})
+
+    {:ok, view, _} =
+      live(conn, ~p"/traces?source_id=#{database.id}&sort=name&direction=asc")
+
+    render_async(view)
+    assert_receive {:trace_activity, _}
+    render_click(view, "toggle_overview")
+    refute_patch(view)
+
+    view |> form("#trace-filters", %{path: "jobs"}) |> render_change()
+    target = assert_patch(view)
+    render_async(view)
+    assert has_element?(view, "#trace-overview button[aria-expanded='false']")
+    refute has_element?(view, "#job-overview-body")
+    refute target =~ "collapsed"
+    refute target =~ "jobs_"
+    refute_receive {:trace_activity, _}
+
+    {:ok, reloaded, _} = live(conn, target)
+    render_async(reloaded)
+    assert has_element?(reloaded, "#trace-overview button[aria-expanded='true']")
+
+    assert has_element?(
+             reloaded,
+             "#trace-overview[data-overview-rows='1']"
+           )
+  end
+
   test "overview honors path and state filters without refetching Stats", %{
     conn: conn,
     database: database
   } do
-    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}&jobs_page=2")
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&page=2")
     render_async(view)
     assert_receive {:trace_activity, _}
     view |> form("#trace-filters", %{path: "jobs", state: "error"}) |> render_submit()
@@ -411,14 +610,14 @@ defmodule TrifleApp.TracesLiveTest do
     assert payload["title"] == "jobs/App.Worker"
     assert payload["html"] =~ "Available with Any state."
     refute_receive {:trace_activity, _}
-    assert_patch(view) =~ "/traces/overview?"
+    assert_patch(view) =~ "/traces?"
   end
 
   test "refresh retains the cards, chart identities and expanded view until new data arrives", %{
     conn: conn,
     database: database
   } do
-    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
     before = render_async(view)
     [card | _] = overview_cards(before)
 
@@ -465,14 +664,14 @@ defmodule TrifleApp.TracesLiveTest do
     database: database
   } do
     alias Trifle.Traces.Overview
-    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
     render_async(view)
     pid = view.pid
     :erlang.trace_pattern({Overview, :prepare, 4}, true, [])
     on_exit(fn -> :erlang.trace_pattern({Overview, :prepare, 4}, false, []) end)
     :erlang.trace(pid, true, [:call])
 
-    view |> form("#trace-overview form", %{jobs_sort: "name", jobs_size: "3"}) |> render_change()
+    view |> form("#trace-overview form", %{sort: "name"}) |> render_change()
     render_async(view)
     view |> element("#trace-list a[href*='reference=first']") |> render_click()
     render_async(view)
@@ -490,7 +689,7 @@ defmodule TrifleApp.TracesLiveTest do
     conn: conn,
     database: database
   } do
-    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
     render_async(view)
 
     for action <- [
@@ -509,7 +708,7 @@ defmodule TrifleApp.TracesLiveTest do
     conn: conn,
     database: database
   } do
-    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
     [payload | _] = overview_cards(render_async(view))
     assert_receive {:trace_activity, _}
 
@@ -1096,16 +1295,14 @@ defmodule TrifleApp.TracesLiveTest do
   test "mailbox, pagination, deep links and multipart detail", %{conn: conn, database: database} do
     {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&timeframe=1d&granularity=1h")
     html = render_async(view)
-    assert html =~ "Activity · All traces"
+    assert has_element?(view, "#trace-overview", "Overview")
     assert activity_total(view) == 6
     refute html =~ "recorded events"
     assert has_element?(view, "#traces-root > h1.sr-only", "Traces")
     refute has_element?(view, "#traces-root > header")
     refute has_element?(view, "button[phx-click='toggle_source_dropdown']")
-    assert has_element?(view, "#traces-dashboard-grid[data-editable='false'][data-min-rows='3']")
-    assert has_element?(view, ".grid-widget-expand[data-widget-id='trace-activity']")
-    refute has_element?(view, "#trace-activity-chart[phx-hook='DatabaseExploreChart']")
-    refute has_element?(view, "#traces-dashboard-grid [data-export-link]")
+    assert has_element?(view, "#traces-overview-grid .grid-widget-expand")
+    refute has_element?(view, "#traces-dashboard-grid")
     assert has_element?(view, "#trace-list a", "jobs/App.Worker")
     refute has_element?(view, "#trace-detail")
     view |> element("button", "Load more") |> render_click()
@@ -1448,7 +1645,7 @@ defmodule TrifleApp.TracesLiveTest do
       assert activity_payload(view) == original
       render_async(view)
       assert activity_payload(view) == original
-      assert has_element?(view, "#traces-dashboard-grid[data-hide-on-patch='false']")
+      assert has_element?(view, "#traces-overview-grid [phx-hook='CompactChart']")
       assert has_element?(view, "#trace-detail", reference)
     end
 
@@ -1509,7 +1706,7 @@ defmodule TrifleApp.TracesLiveTest do
     assert has_element?(view, "button[phx-click='toggle_source_dropdown']", "Other traces")
   end
 
-  test "activity expands with the same buckets and updates its scope without changing the mailbox",
+  test "overview expands with the same buckets and updates its scope without changing the trace list",
        %{
          conn: conn,
          database: database
@@ -1520,19 +1717,19 @@ defmodule TrifleApp.TracesLiveTest do
     render_async(view)
     assert_receive {:trace_activity, "1h"}
     assert_receive {:trace_search, _}
-    render_click(view, "expand_widget", %{"id" => "trace-activity"})
-    assert has_element?(view, "#traces-expanded-widget")
-    assert has_element?(view, "#traces-root > #traces-expanded-widget")
-    refute has_element?(view, ".traces-scrollport #traces-expanded-widget")
-    assert length(Floki.find(Floki.parse_document!(render(view)), "#traces-dashboard-grid")) == 1
-    assert has_element?(view, "#expanded-widget-trace-activity[phx-hook='ExpandedWidgetView']")
-    assert has_element?(view, "#expanded-widget-trace-activity [data-role='table-root']")
+    expand_overview(view, "jobs/App.Worker")
+    assert has_element?(view, "#traces-root > #traces-overview-expanded-widget")
+    refute has_element?(view, ".traces-scrollport #traces-overview-expanded-widget")
+    assert has_element?(view, "#traces-overview-expanded-widget [phx-hook='ExpandedWidgetView']")
+    assert has_element?(view, "#traces-overview-expanded-widget [data-role='table-root']")
 
-    chart = activity_payload(view)
+    chart = expanded_payload(view)
     assert chart["chart_type"] == "bar"
     assert chart["stacked"]
     assert chart["timezone"] == "UTC"
-    assert expanded_payload(view) == chart
+
+    assert Enum.filter(chart["series"], & &1["state"]) ==
+             Enum.filter(activity_payload(view)["series"], &(&1["path"] == "jobs/App.Worker"))
 
     assert Enum.find(chart["series"], &(&1["name"] == "jobs/App.Worker · Success"))["data"] == [
              [DateTime.to_unix(~U[2026-09-12 12:00:00Z], :millisecond), 1],
@@ -1547,49 +1744,59 @@ defmodule TrifleApp.TracesLiveTest do
 
     assert has_element?(
              view,
-             "#traces-expanded-widget",
-             "Activity · jobs (including descendants)"
+             "#traces-overview-expanded-widget",
+             "jobs/App.Worker"
            )
 
     assert has_element?(view, "#trace-list", "No traces match")
     assert has_element?(view, "#trace-detail", "first")
-    assert expanded_payload(view) == activity_payload(view)
+
+    assert Enum.filter(expanded_payload(view)["series"], & &1["state"]) ==
+             activity_payload(view)["series"]
 
     assert [%{"path" => "jobs/App.Worker", "state" => "error", "color" => "#ef4444"}] =
-             expanded_payload(view)["series"]
+             Enum.filter(expanded_payload(view)["series"], & &1["state"])
 
     refute_receive {:trace_activity, _}
 
     render_click(view, "close_expanded_widget")
-    refute has_element?(view, "#traces-expanded-widget")
+    refute has_element?(view, "#traces-overview-expanded-widget")
     assert has_element?(view, "#trace-detail", "first")
     render_click(view, "expand_widget", %{"id" => "unknown"})
-    refute has_element?(view, "#traces-expanded-widget")
+    refute has_element?(view, "#traces-overview-expanded-widget")
   end
 
-  test "compact and expanded activity share a weighted secondary duration line and filters", %{
+  test "overview expansion shows count and weighted duration for the selected path and state", %{
     conn: conn,
     database: database
   } do
     Application.put_env(:trifle, :trace_activity, FakeDurationActivity)
     {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&timeframe=1d&granularity=1h")
     render_async(view)
-    render_click(view, "expand_widget", %{"id" => "trace-activity"})
-    chart = activity_payload(view)
-    assert chart == expanded_payload(view)
-    assert chart["secondary_y_label"] == "Avg. duration (ms)"
+    expand_overview(view, "jobs/App.Worker")
+    chart = expanded_payload(view)
+    assert chart["secondary_y_label"] == "Duration (ms)"
     line = Enum.find(chart["series"], &(&1["y_axis"] == "secondary"))
     assert line["chart_type"] == "line"
     assert line["stacked"] == false
     assert line["color"] == "#8b5cf6"
     assert line["unit"] == "ms"
-    assert Enum.map(line["data"], &List.last/1) == [440.0, 500.0]
+    assert Enum.map(line["data"], &List.last/1) == [500.0, 500.0]
     assert length(Enum.filter(chart["series"], &(&1["y_axis"] == "secondary"))) == 1
+    refute Enum.any?(chart["series"], &(&1["name"] == "Lines"))
+
+    [gauge] =
+      render(view)
+      |> Floki.parse_document!()
+      |> Floki.attribute("[id^='job-duration-'][data-compact-chart]", "data-chart")
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.filter(&(&1["gauge"]["average"] == 500.0))
+
+    assert gauge["gauge"]["latest"] == 500.0
 
     view |> form("#trace-filters", %{path: "jobs", state: "warning"}) |> render_submit()
     render_async(view)
-    chart = activity_payload(view)
-    assert chart == expanded_payload(view)
+    chart = expanded_payload(view)
 
     assert [%{"state" => "warning"}, %{"y_axis" => "secondary", "data" => [[_, 900.0], [_, nil]]}] =
              chart["series"]
@@ -1597,15 +1804,26 @@ defmodule TrifleApp.TracesLiveTest do
     view |> form("#trace-filters", %{path: "jobs", state: "running"}) |> render_submit()
     render_async(view)
     assert activity_payload(view)["series"] == []
+    refute has_element?(view, "#traces-overview-expanded-widget")
   end
 
-  test "expanded activity safely shows a path with no counters", %{conn: conn, database: database} do
+  test "overview safely shows an empty path and ignores the retired activity expansion", %{
+    conn: conn,
+    database: database
+  } do
     {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&path=missing%2Fpath")
     render_async(view)
     render_click(view, "expand_widget", %{"id" => "trace-activity"})
-    assert expanded_payload(view)["series"] == []
-    assert render(view) =~ "No recorded activity for this path, state and timeframe."
-    assert has_element?(view, "#traces-expanded-widget", "Activity · missing/path")
+    assert activity_payload(view)["series"] == []
+
+    assert has_element?(
+             view,
+             "#trace-overview",
+             "No traces match this path, state and timeframe."
+           )
+
+    refute has_element?(view, "#traces-overview-expanded-widget")
+    refute has_element?(view, "#traces-expanded-widget")
   end
 
   test "path and state scope both surfaces without refetching Stats", %{
@@ -1618,7 +1836,7 @@ defmodule TrifleApp.TracesLiveTest do
     assert_receive {:trace_search, _}
     view |> form("#trace-filters", %{path: "jobs", state: "error"}) |> render_submit()
     html = render_async(view)
-    assert html =~ "Activity · jobs (including descendants)"
+    assert has_element?(view, "#trace-overview article", "jobs/App.Worker")
     assert activity_total(view) == 1
     assert html =~ "No traces match"
     assert_receive {:trace_search, filters}
@@ -1715,21 +1933,51 @@ defmodule TrifleApp.TracesLiveTest do
     |> Enum.sum()
   end
 
+  defp expand_overview(view, path) do
+    id = TrifleApp.Components.TraceOverview.widget_id(path)
+    view |> element("#trace-overview [phx-value-id='#{id}']") |> render_click()
+  end
+
+  defp refute_patch(%{proxy: {ref, topic, _}}) do
+    refute_receive {^ref, {:patch, ^topic, _}}
+  end
+
+  defp set_overview_rows(view, target) do
+    current =
+      render(view)
+      |> Floki.parse_document!()
+      |> Floki.attribute("#trace-overview", "data-overview-rows")
+      |> hd()
+      |> String.to_integer()
+
+    delta = if target > current, do: "1", else: "-1"
+
+    for _ <- List.duplicate(delta, abs(target - current)) do
+      view
+      |> element("#trace-overview button[phx-click='overview_rows'][phx-value-delta='#{delta}']")
+      |> render_click()
+    end
+  end
+
   defp activity_payload(view) do
-    view
-    |> render()
-    |> Floki.parse_document!()
-    |> Floki.attribute("#traces-dashboard-grid-widget-data-trace-activity", "data-widget-payload")
-    |> hd()
-    |> Jason.decode!()
-    |> Map.fetch!("payload")
+    charts =
+      view
+      |> render()
+      |> Floki.parse_document!()
+      |> Floki.attribute("#traces-overview-grid .job-overview-sparkline", "data-chart")
+      |> Enum.map(&Jason.decode!/1)
+
+    %{"series" => Enum.flat_map(charts, & &1["series"])}
   end
 
   defp expanded_payload(view) do
     view
     |> render()
     |> Floki.parse_document!()
-    |> Floki.attribute("#expanded-widget-trace-activity", "data-chart")
+    |> Floki.attribute(
+      "#traces-overview-expanded-widget [phx-hook='ExpandedWidgetView']",
+      "data-chart"
+    )
     |> hd()
     |> Jason.decode!()
   end

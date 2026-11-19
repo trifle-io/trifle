@@ -15,6 +15,9 @@ defmodule TrifleApp.Components.TraceOverview do
     ~H"""
     <section
       id="trace-overview"
+      phx-hook="TraceOverviewPreferences"
+      data-overview-columns={@overview.columns}
+      data-overview-rows={@overview.row_count}
       aria-label="Overview"
       class="relative shrink-0 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
     >
@@ -47,12 +50,12 @@ defmodule TrifleApp.Components.TraceOverview do
         >
           <label>
             Sort
-            <select name="jobs_sort" class="job-overview-select">
+            <select name="sort" class="job-overview-select">
               <option
                 :for={
                   {label, value} <- [
                     {"Traces", "count"},
-                    {"Name", "name"},
+                    {"Path", "name"},
                     {"Success rate", "success"},
                     {"Avg duration", "duration"},
                     {"Avg lines", "lines"}
@@ -65,25 +68,37 @@ defmodule TrifleApp.Components.TraceOverview do
               </option>
             </select>
           </label>
-          <label>
-            <span class="sr-only">Sort direction</span><select
-              name="jobs_direction"
-              class="job-overview-select"
+          <.button_group size="sm" labels="hidden">
+            <:button
+              phx-click="toggle_overview_direction"
+              label={if @overview.direction == "asc", do: "Sort descending", else: "Sort ascending"}
+              tooltip={
+                if @overview.direction == "asc",
+                  do: "Ascending · Sort descending",
+                  else: "Descending · Sort ascending"
+              }
             >
-            <option value="desc" selected={@overview.direction == "desc"}>Descending</option><option
-              value="asc"
-              selected={@overview.direction == "asc"}
-            >Ascending</option>
-          </select>
-          </label>
-          <label>
-            Traces
-            <select name="jobs_size" class="job-overview-select">
-              <option :for={size <- [3, 9, 15, 30]} value={size} selected={@overview.size == size}>
-                {size}
-              </option>
-            </select>
-          </label>
+              <.row_control_icon action={
+                if @overview.direction == "asc", do: "ascending", else: "descending"
+              } />
+            </:button>
+          </.button_group>
+          <div class="flex items-center gap-2" aria-label="Traces per page">
+            <.button_group size="sm" labels="hidden">
+              <:button
+                :for={{label, delta} <- [{"Fewer rows", -1}, {"More rows", 1}]}
+                phx-click="overview_rows"
+                values={%{"delta" => delta}}
+                label={label}
+                disabled={
+                  if delta == -1, do: @overview.row_count <= 1, else: @overview.row_count >= 100
+                }
+                tooltip={"#{label} · #{@overview.size} traces per page"}
+              >
+                <.row_control_icon action={if delta == 1, do: "more", else: "fewer"} />
+              </:button>
+            </.button_group>
+          </div>
           <nav
             :if={@overview.total > 0}
             aria-label="Overview pagination"
@@ -92,24 +107,48 @@ defmodule TrifleApp.Components.TraceOverview do
             <span class="whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
               Page {@overview.page} of {@overview.pages}
             </span>
-            <button
-              type="button"
-              phx-click="overview_page"
-              phx-value-page={@overview.page - 1}
-              disabled={@loading || @overview.page <= 1}
-              class="disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              phx-click="overview_page"
-              phx-value-page={@overview.page + 1}
-              disabled={@loading || @overview.page >= @overview.pages}
-              class="disabled:opacity-40"
-            >
-              Next
-            </button>
+            <.button_group size="sm" labels="hidden">
+              <:button
+                phx-click="overview_page"
+                values={%{"page" => @overview.page - 1}}
+                disabled={@loading || @overview.page <= 1}
+                label="Previous page"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15.75 19.5 8.25 12l7.5-7.5"
+                  />
+                </svg>
+              </:button>
+              <:button
+                phx-click="overview_page"
+                values={%{"page" => @overview.page + 1}}
+                disabled={@loading || @overview.page >= @overview.pages}
+                label="Next page"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                </svg>
+              </:button>
+            </.button_group>
           </nav>
         </form>
       </div>
@@ -134,6 +173,37 @@ defmodule TrifleApp.Components.TraceOverview do
         </div>
       </div>
     </section>
+    """
+  end
+
+  attr :action, :string, required: true, values: ~w(ascending descending more fewer)
+
+  defp row_control_icon(assigns) do
+    ~H"""
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke-width="1.5"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path d="M3 6h10M3 12h7M3 18h4" />
+      <path
+        stroke-width="1.75"
+        d={
+          case @action do
+            "ascending" -> "M18 19V5m-3 3 3-3 3 3"
+            "descending" -> "M18 5v14m-3-3 3 3 3-3"
+            "more" -> "M15 18h6m-3-3v6"
+            "fewer" -> "M15 18h6"
+          end
+        }
+      />
+    </svg>
     """
   end
 
@@ -203,13 +273,13 @@ defmodule TrifleApp.Components.TraceOverview do
     <div class="trace-overview-widget" data-trace-overview-widget>
       <div class="job-overview-header">
         <div class="job-overview-heading">
-          <.status_indicators row={@row} />
+          <.status_indicator row={@row} />
           <.link
             patch={Query.path_url(@params, @row.path)}
-            class="job-overview-title text-base font-semibold hover:underline underline-offset-2"
+            class="job-overview-title trace-path-label text-base font-semibold hover:underline underline-offset-2"
             data-trace-path={@row.path}
           >
-            {PathColors.html(@row.path, @path_colors, "/")}
+            {PathColors.html(@row.path, @path_colors, "/", wrap: true)}
           </.link>
         </div>
         <div class="job-overview-header-actions">
@@ -280,22 +350,14 @@ defmodule TrifleApp.Components.TraceOverview do
 
   attr :row, :map, required: true
 
-  defp status_indicators(assigns) do
-    success = assigns.row.success
-
-    success_tooltip =
-      if is_number(success),
-        do:
-          "Success rate: #{percentage(success)}% of all traces, including running and unclassified traces",
-        else: "Success rate: No traces in this timeframe"
-
-    state_tooltip =
+  defp status_indicator(assigns) do
+    tooltip =
       case assigns.row.state_distribution do
         [] ->
-          "State mix: No traces in this timeframe"
+          "State slices: No traces in this timeframe"
 
         states ->
-          "State mix · " <>
+          "State slices · " <>
             Enum.map_join(states, " · ", fn item ->
               "#{String.capitalize(item.state)}: #{percentage(item.percentage)}%"
             end)
@@ -303,19 +365,7 @@ defmodule TrifleApp.Components.TraceOverview do
 
     assigns =
       assigns
-      |> assign(:success_tooltip, success_tooltip)
-      |> assign(:state_tooltip, state_tooltip)
-      |> assign(:pie_tooltip, String.replace_prefix(state_tooltip, "State mix", "State slices"))
-      |> assign(
-        :success_segments,
-        if(is_number(success),
-          do: [
-            %{name: "Success", value: success, color: TraceStates.color("success")},
-            %{name: "Other states", value: 100 - success}
-          ],
-          else: []
-        )
-      )
+      |> assign(:pie_tooltip, tooltip)
       |> assign(
         :state_segments,
         Enum.map(assigns.row.state_distribution, fn item ->
@@ -329,32 +379,6 @@ defmodule TrifleApp.Components.TraceOverview do
 
     ~H"""
     <div class="job-overview-status">
-      <.chart
-        id={"job-success-rate-" <> Base.url_encode64(@row.path, padding: false)}
-        class="job-overview-status-circle"
-        payload={
-          %{
-            presentation: "proportion",
-            outline_color: TraceStates.color("success"),
-            segments: @success_segments
-          }
-        }
-        label={@success_tooltip}
-        tooltip={@success_tooltip}
-      />
-      <.chart
-        id={"job-state-mix-" <> Base.url_encode64(@row.path, padding: false)}
-        class="job-overview-status-circle"
-        payload={
-          %{
-            presentation: "proportion",
-            outline_color: TraceStates.color("success"),
-            segments: @state_segments
-          }
-        }
-        label={@state_tooltip}
-        tooltip={@state_tooltip}
-      />
       <.chart
         id={"job-state-pie-" <> Base.url_encode64(@row.path, padding: false)}
         class="job-overview-status-circle"
@@ -417,18 +441,14 @@ defmodule TrifleApp.Components.TraceOverview do
         label={"#{@title}: Average #{@average_label.value} #{@average_label.unit}; Latest #{@latest_label.value} #{@latest_label.unit}"}
       >
         <div class="job-overview-gauge-value" data-gauge-value aria-hidden="true">
+          <TrifleApp.SidebarIcons.icon
+            name={@icon}
+            class="job-overview-gauge-icon text-slate-500 dark:text-slate-400"
+          />
           <span class="job-overview-gauge-reading" data-gauge-reading>
-            <TrifleApp.SidebarIcons.icon
-              name={@icon}
-              class="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
-            />
             <span data-compact-value>{@latest_label.value}</span>
           </span>
-          <span
-            :if={@unit != ""}
-            data-compact-unit
-            class="job-overview-gauge-unit text-slate-500 dark:text-slate-400"
-          >
+          <span data-compact-unit class="job-overview-gauge-unit text-slate-500 dark:text-slate-400">
             {@latest_label.unit}
           </span>
         </div>
@@ -478,6 +498,16 @@ defmodule TrifleApp.Components.TraceOverview do
   end
 
   defp measurement(value, "ms"), do: TrifleApp.Format.compact_duration_ms(value)
+
+  defp measurement(value, "") do
+    label = format(value)
+
+    case Regex.run(~r/^(.+?)([kmbt])$/i, label) do
+      [_, number, suffix] -> %{value: number, unit: suffix}
+      _ -> %{value: label, unit: ""}
+    end
+  end
+
   defp measurement(value, unit), do: %{value: format(value), unit: unit}
 
   defp percentage(value) do

@@ -94,9 +94,10 @@ defmodule Trifle.Traces.OverviewTest do
     activity = Trifle.Traces.Activity.build(input())
     [row] = rows = Overview.prepare(input(), nil, nil, activity)
     refute Map.has_key?(row, :points)
-    assert Overview.paginate(rows, %{"jobs_size" => "3"}).rows == rows
+    assert Overview.paginate(rows, %{}, %{rows: 1}).rows == rows
     assert Overview.expand(row, input(), nil, activity).points != []
-    collapsed = Overview.collapsed(input(), nil, nil, %{"jobs_collapsed" => "true"}, activity)
+    collapsed = Overview.collapsed(input(), nil, nil, %{}, activity)
+    assert collapsed.collapsed
     assert collapsed.rows == []
     assert collapsed.total == 1
   end
@@ -142,11 +143,11 @@ defmodule Trifle.Traces.OverviewTest do
         catalog: %{at: [1000, 2000, 3000], values: [%{}, %{}, %{}]}
     }
 
-    page = Overview.build(base, nil, nil, %{"jobs_sort" => "duration", "jobs_page" => "2"})
+    page = Overview.build(base, nil, nil, %{"sort" => "duration", "page" => "2"})
     assert page.total == 31
     assert page.pages == 4
     assert hd(page.rows).path == "jobs/10"
-    last = Overview.build(base, nil, nil, %{"jobs_sort" => "duration", "jobs_page" => "99"})
+    last = Overview.build(base, nil, nil, %{"sort" => "duration", "page" => "99"})
     assert last.page == 4
     assert List.last(last.rows).path == "jobs/missing"
   end
@@ -154,14 +155,29 @@ defmodule Trifle.Traces.OverviewTest do
   test "empty input and malformed controls are safe" do
     page =
       Overview.build(nil, nil, nil, %{
-        "jobs_size" => "9999",
-        "jobs_page" => "-1",
-        "jobs_sort" => "bad"
+        "size" => "9999",
+        "page" => "-1",
+        "sort" => "bad"
       })
 
     assert page.rows == []
     assert page.size == 9
     assert page.page == 1
     assert page.sort == "count"
+  end
+
+  test "row preferences determine page size at each responsive column count" do
+    for columns <- 1..3, rows <- [1, 3, 4, 10] do
+      controls = Overview.controls(%{}, %{rows: rows, columns: columns})
+      assert controls.size == rows * columns
+      assert controls.row_count == rows
+    end
+
+    for invalid <- [nil, "bad", "3.5", 0, -1, 101, %{}] do
+      assert Overview.row_count(invalid) == 3
+    end
+
+    assert Overview.row_count("4") == 4
+    assert Overview.controls(%{}).size == 9
   end
 end

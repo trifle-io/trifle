@@ -5,16 +5,14 @@ defmodule TrifleApp.Components.Traces do
   alias TrifleApp.TracesLive.Query
   alias TrifleApp.TracesLive.CopyText
   alias TrifleApp.TracesLive.Timestamps
-  alias TrifleApp.Components.DashboardWidgets.{ExpandedChart, WidgetView}
   alias TrifleApp.DesignSystem.PathColors
-  alias TrifleApp.DesignSystem.TraceStates
 
   attr :params, :map, required: true
   attr :paths, :list, required: true
 
   def filters(assigns) do
     ~H"""
-    <section aria-label="Activity filters" class="trace-filter-container">
+    <section aria-label="Trace filters" class="trace-filter-container">
       <form
         id="trace-filters"
         phx-change="apply_activity_filters"
@@ -50,113 +48,6 @@ defmodule TrifleApp.Components.Traces do
         <datalist id="trace-paths"><option :for={path <- @paths} value={path} /></datalist>
       </form>
     </section>
-    """
-  end
-
-  attr :activity, :map, required: true
-  attr :path, :string, default: nil
-  attr :state, :string, default: nil
-  attr :loading, :boolean, required: true
-  attr :error, :string, default: nil
-  attr :timezone, :string, required: true
-  attr :expanded, :boolean, default: false
-  attr :presentation, :string, default: "both", values: ~w(both widget expanded)
-
-  def activity(assigns) do
-    title =
-      "Activity · " <>
-        if(assigns.path, do: assigns.path <> " (including descendants)", else: "All traces")
-
-    title = if assigns.state, do: title <> " · " <> String.capitalize(assigns.state), else: title
-
-    widget = %{
-      "id" => "trace-activity",
-      "type" => "timeseries",
-      "title" => title,
-      "chart_type" => "bar",
-      "stacked" => true,
-      "legend" => false,
-      "y_label" => "Events",
-      "w" => 12,
-      "h" => 3,
-      "x" => 0,
-      "y" => 0
-    }
-
-    chart = %{
-      id: widget["id"],
-      chart_type: "bar",
-      stacked: true,
-      normalized: false,
-      legend: false,
-      y_label: "Events",
-      secondary_y_label: "Avg. duration (ms)",
-      timezone: assigns.timezone,
-      series:
-        Enum.map(
-          assigns.activity.series,
-          &Map.put_new(&1, :color, TraceStates.color(Map.get(&1, :state)))
-        )
-    }
-
-    assigns =
-      assigns
-      |> assign(:title, title)
-      |> assign(:chart, if(assigns.loading, do: nil, else: chart))
-      |> assign(:dashboard, %{id: "traces", payload: %{"grid" => [widget]}})
-
-    ~H"""
-    <section :if={@presentation != "expanded"} aria-label="Trace activity">
-      <p
-        :if={Enum.any?(@activity.series, &(Map.get(&1, :state) == "unclassified"))}
-        class="mb-3 px-1 text-xs text-slate-500 dark:text-slate-400"
-      >
-        Gray activity has no recognized state counter. Select a state to exclude it.
-      </p>
-      <p :if={@error} role="status" class="mt-3 text-sm text-amber-700 dark:text-amber-400">
-        {@error}
-      </p>
-      <WidgetView.grid
-        grid_dom_id="traces-dashboard-grid"
-        dashboard={@dashboard}
-        min_rows={3}
-        timeseries={if @chart, do: %{"trace-activity" => @chart}, else: %{}}
-        loading={@loading}
-        hide_on_patch={false}
-        widget_export={%{type: :disabled}}
-      />
-      <p :if={!@loading && !@error && @activity.series == []} class="mt-2 text-sm text-slate-500">
-        No recorded activity for this path, state and timeframe.
-      </p>
-    </section>
-    <.app_modal
-      :if={@expanded && @presentation != "widget"}
-      id="traces-expanded-widget"
-      show={true}
-      size="full"
-      on_cancel={JS.push("close_expanded_widget")}
-    >
-      <:title>
-        <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-          <span class="break-all">{@title}</span>
-          <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
-            Timeseries
-          </span>
-        </div>
-      </:title>
-      <:body>
-        <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-          Activity counts per time bucket and state, with average duration on the right axis. Toggle a trace path in the legend to hide its states and exclude it from the weighted average. Tags and duration filter only the trace list.
-        </p>
-        <p :if={@error} role="status" class="mb-4 text-sm text-amber-700 dark:text-amber-400">
-          {@error}
-        </p>
-        <p :if={@loading} role="status" class="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          Loading activity…
-        </p>
-        <ExpandedChart.content id="expanded-widget-trace-activity" title={@title} chart={@chart} />
-      </:body>
-    </.app_modal>
     """
   end
 
@@ -280,11 +171,8 @@ defmodule TrifleApp.Components.Traces do
             !@selected && "md:grid-cols-[minmax(0,1fr)_auto]"
           ]}>
             <div class="trace-row-summary min-w-0">
-              <p
-                class="min-w-0 text-sm font-medium [overflow-wrap:anywhere]"
-                data-trace-path={trace.key}
-              >
-                {PathColors.html(trace.key, @path_colors, "/")}
+              <p class="trace-path-label min-w-0 text-sm font-medium" data-trace-path={trace.key}>
+                {PathColors.html(trace.key, @path_colors, "/", wrap: true)}
               </p>
               <.row_metadata trace={trace} />
             </div>

@@ -22,12 +22,15 @@ defmodule TrifleApp.DesignSystem.PathColors do
   @doc """
   Render a flat, escaped path with a separate colored span for each segment.
   Trace slashes inherit the preceding segment's color; Stats dots stay unchanged.
+  Set `wrap: true` to allow line breaks after path and word separators.
   """
-  def html(path, colors, separator \\ ".") when separator in [".", "/"] do
+  def html(path, colors, separator \\ ".", opts \\ []) when separator in [".", "/"] do
+    wrap? = Keyword.get(opts, :wrap, false)
+
     path
     |> parts(colors, separator)
     |> Enum.map(fn part ->
-      ~s(<span style="color: #{escape(part.color)} !important">#{escape(part.label)}</span>)
+      ~s(<span style="color: #{escape(part.color)} !important">#{label_html(part.label, wrap?)}</span>)
     end)
     |> Enum.join(if separator == "/", do: "", else: separator)
     |> Phoenix.HTML.raw()
@@ -52,5 +55,13 @@ defmodule TrifleApp.DesignSystem.PathColors do
 
   defp segments(path, "."), do: Trifle.Stats.Path.segments(path)
   defp segments(path, "/"), do: String.split(path, "/")
+  defp label_html(label, false), do: escape(label)
+
+  defp label_html(label, true) do
+    label
+    |> String.split(~r|(?<=[/.:_-])|u)
+    |> Enum.map_join("<wbr>", &escape/1)
+  end
+
   defp escape(value), do: value |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 end

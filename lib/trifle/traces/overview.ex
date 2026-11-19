@@ -4,23 +4,33 @@ defmodule Trifle.Traces.Overview do
   alias Trifle.Stats.MeasurementSummary
 
   @sorts ~w(name count success duration lines)
-  def controls(params) do
+  def row_count(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {rows, ""} -> row_count(rows)
+      _ -> 3
+    end
+  end
+
+  def row_count(value) when is_integer(value) and value in 1..100, do: value
+  def row_count(_), do: 3
+
+  def controls(params, preferences \\ %{}) do
+    rows = row_count(preferences[:rows])
+    columns = if preferences[:columns] in 1..3, do: preferences[:columns], else: 3
+
     %{
-      sort: if(params["jobs_sort"] in @sorts, do: params["jobs_sort"], else: "count"),
-      direction: if(params["jobs_direction"] == "asc", do: "asc", else: "desc"),
-      size:
-        if(params["jobs_size"] in ~w(3 9 15 30),
-          do: String.to_integer(params["jobs_size"]),
-          else: 9
-        ),
-      page: positive_integer(params["jobs_page"]),
-      collapsed: params["jobs_collapsed"] == "true"
+      sort: if(params["sort"] in @sorts, do: params["sort"], else: "count"),
+      direction: if(params["direction"] == "asc", do: "asc", else: "desc"),
+      row_count: rows,
+      columns: columns,
+      size: rows * columns,
+      page: positive_integer(params["page"])
     }
   end
 
-  def build(input, path, state, params) do
+  def build(input, path, state, params, preferences \\ %{}) do
     activity = Activity.build(input, path)
-    page = input |> prepare(path, state, activity) |> paginate(params)
+    page = input |> prepare(path, state, activity) |> paginate(params, preferences)
     %{page | rows: Enum.map(page.rows, &expand(&1, input, state, activity))}
   end
 
@@ -83,8 +93,8 @@ defmodule Trifle.Traces.Overview do
     end)
   end
 
-  def paginate(rows, params) do
-    controls = controls(params)
+  def paginate(rows, params, preferences \\ %{}) do
+    controls = controls(params, preferences)
 
     rows =
       rows
@@ -101,11 +111,12 @@ defmodule Trifle.Traces.Overview do
         end
       end)
 
-    page(rows, length(rows), controls)
+    page(rows, length(rows), controls) |> Map.put(:collapsed, false)
   end
 
-  def collapsed(input, path, state, params, activity) do
-    page([], length(matching_paths(input, path, state, activity)), controls(params))
+  def collapsed(input, path, state, params, activity, preferences \\ %{}) do
+    page([], length(matching_paths(input, path, state, activity)), controls(params, preferences))
+    |> Map.put(:collapsed, true)
   end
 
   def expand(row, input, state, activity) do

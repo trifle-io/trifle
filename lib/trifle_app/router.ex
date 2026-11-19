@@ -95,6 +95,7 @@ defmodule TrifleApp.Router do
       live "/dbs/:id/settings", DatabaseSettingsLive, :show
       live "/explore", ExploreLive, :show
       live "/traces", TracesLive, :index
+      # Compatibility redirect for links to the experimental overview.
       live "/traces/overview", TracesLive, :overview
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new

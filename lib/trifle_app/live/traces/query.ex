@@ -4,7 +4,8 @@ defmodule TrifleApp.TracesLive.Query do
   alias Trifle.Stats.Source
   alias TrifleApp.TimeframeParsing
 
-  @fields ~w(source_id reference detail path state tags tag_mode duration_min timeframe granularity from to jobs_sort jobs_direction jobs_size jobs_page jobs_collapsed)
+  @fields ~w(source_id reference detail path state tags tag_mode duration_min timeframe granularity from to sort direction page)
+  @overview_fields ~w(sort direction page)
   @range_fields ~w(source_id timeframe from to)
   @list_fields ~w(reference tags tag_mode duration_min)
 
@@ -16,6 +17,14 @@ defmodule TrifleApp.TracesLive.Query do
   end
 
   def params(params) do
+    params =
+      Enum.reduce(@overview_fields, params, fn field, acc ->
+        case Map.fetch(params, "jobs_" <> field) do
+          {:ok, value} -> Map.put_new(acc, field, value)
+          :error -> acc
+        end
+      end)
+
     params
     |> Map.take(@fields)
     |> Enum.filter(fn {_, value} -> is_binary(value) and byte_size(value) <= 2048 end)
@@ -132,8 +141,7 @@ defmodule TrifleApp.TracesLive.Query do
   end
 
   def url(params) do
-    route = if params["_view"] == "overview", do: "/traces/overview", else: "/traces"
-    route <> "?" <> URI.encode_query(Map.delete(params, "_view"))
+    "/traces?" <> URI.encode_query(params(params))
   end
 
   def path_url(params, path), do: filtered_url(params, %{"path" => path})
@@ -141,9 +149,10 @@ defmodule TrifleApp.TracesLive.Query do
 
   defp filtered_url(params, filters) do
     params
+    |> params()
     |> Map.drop(["reference", "detail"])
     |> Map.merge(filters)
-    |> Map.delete("jobs_page")
+    |> Map.delete("page")
     |> url()
   end
 end

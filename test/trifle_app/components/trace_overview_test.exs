@@ -26,8 +26,9 @@ defmodule TrifleApp.Components.TraceOverviewTest do
       |> Floki.parse_document!()
 
     assert length(Floki.find(doc, "#traces-overview-grid > article")) == 6
-    assert length(Floki.find(doc, "[phx-hook='CompactChart']")) == 36
-    assert length(Floki.find(doc, "[data-compact-canvas][phx-update='ignore']")) == 36
+    assert length(Floki.find(doc, "[phx-hook='CompactChart']")) == 24
+    assert length(Floki.find(doc, "[data-compact-canvas][phx-update='ignore']")) == 24
+    assert length(Floki.find(doc, ".job-overview-status-circle")) == 6
     assert Floki.find(doc, "#traces-overview-grid[phx-update='ignore']") == []
     assert Floki.find(doc, "[data-widget-payload], [phx-hook='DashboardGrid']") == []
     assert length(Floki.find(doc, ".grid-widget-expand[phx-click='expand_widget']")) == 6
@@ -66,6 +67,8 @@ defmodule TrifleApp.Components.TraceOverviewTest do
       |> Floki.parse_document!()
 
     [encoded] = Floki.attribute(doc, "[phx-hook='ExpandedWidgetView']", "data-chart")
+    assert Floki.find(doc, "[data-role='table-root']") != []
+    assert Floki.find(doc, "[data-role='timeline-controls'], [data-timeline-page]") == []
     chart = Jason.decode!(encoded)
     assert length(chart["series"]) == 2
     assert Enum.any?(chart["series"], &(&1["state"] == "success"))
@@ -108,9 +111,11 @@ defmodule TrifleApp.Components.TraceOverviewTest do
   end
 
   test "trace and line counts use compact formatting and duration labels adapt units" do
-    for {count, duration, duration_value, duration_unit} <- [
-          {15_213, 4_125, "4.1", "s"},
-          {22_512_623, 150_000, "2.5", "m"}
+    for {count, duration, duration_value, duration_unit, count_value, count_suffix} <- [
+          {15_534, 4_125, "4.1", "s", "15.5", "k"},
+          {22_512_623, 150_000, "2.5", "m", "22.5", "m"},
+          {999, 0, "0", "ms", "999", ""},
+          {0, 0, "0", "ms", "0", ""}
         ] do
       row = %{
         path: "jobs/worker",
@@ -128,6 +133,8 @@ defmodule TrifleApp.Components.TraceOverviewTest do
         pages: 1,
         page: 1,
         size: 9,
+        row_count: 3,
+        columns: 3,
         sort: "count",
         direction: "desc",
         collapsed: false
@@ -142,14 +149,19 @@ defmodule TrifleApp.Components.TraceOverviewTest do
         )
         |> Floki.parse_document!()
 
-      label = if count == 15_213, do: "15.2k", else: "22.5m"
+      label = count_value <> count_suffix
 
       assert Floki.find(doc, ".job-overview-gauge[title]") == []
 
       assert Floki.find(doc, ".job-overview-counter strong") |> Floki.text() |> String.trim() ==
                label
 
-      assert Floki.find(doc, "[id^='job-lines-'] [data-compact-value]") |> Floki.text() == label
+      assert Floki.find(doc, "[id^='job-lines-'] [data-compact-value]") |> Floki.text() ==
+               count_value
+
+      assert Floki.find(doc, "[id^='job-lines-'] [data-compact-unit]")
+             |> Floki.text()
+             |> String.trim() == count_suffix
 
       assert Floki.find(doc, "[id^='job-duration-'] [data-compact-value]") |> Floki.text() ==
                duration_value

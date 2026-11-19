@@ -36,6 +36,7 @@ import { parseJsonSafe, setHidden, findDashboardGridHook } from "./utils/dom";
 import { registerBasicHooks } from "./hooks/basic_hooks";
 import { createTraceCopyHook } from "./hooks/trace_copy_hook.mjs";
 import { createTraceMediaHook } from "./hooks/trace_media_hook.mjs";
+import { createTraceOverviewPreferencesHook, readTraceOverviewRows } from "./hooks/trace_overview_preferences_hook.mjs";
 import { registerDatabaseExploreChartHook } from "./hooks/database_explore_chart_hook";
 import { registerTableHoverHook } from "./hooks/table_hover_hook";
 import { registerSortableDashboardHooks } from "./hooks/sortable_dashboard_hooks";
@@ -89,6 +90,7 @@ registerDashboardRuntimeHooks(Hooks, {
 registerBasicHooks(Hooks, { setHidden });
 Hooks.TraceCopy = createTraceCopyHook();
 Hooks.TraceMedia = createTraceMediaHook();
+Hooks.TraceOverviewPreferences = createTraceOverviewPreferencesHook();
 registerDatabaseExploreChartHook(Hooks, { echarts, withChartOpts, formatCompactNumber, chartFontFamily });
 registerTableHoverHook(Hooks);
 registerSortableDashboardHooks(Hooks, { Sortable, echarts, withChartOpts });
@@ -110,7 +112,7 @@ registerSidebarAlpineComponents();
 
 
 let liveSocket = new LiveSocket("/live", Socket, {
-  params: {_csrf_token: csrfToken, tab_id: getOrCreateTabId()},
+  params: () => ({_csrf_token: csrfToken, tab_id: getOrCreateTabId(), trace_overview_rows: readTraceOverviewRows()}),
   hooks: Hooks,
   dom: {
     onBeforeElUpdated(from, to) {
