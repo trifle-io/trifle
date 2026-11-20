@@ -19,7 +19,7 @@ defmodule TrifleApp.Assets.TraceEntriesLayoutTest do
     refute source =~ "min-height: min-content;"
   end
 
-  test "entry columns reflow with detail width and timestamps reserve space only when shown" do
+  test "compact differences stay inline while full timestamps reflow with detail width" do
     source = File.read!(@source_path)
 
     assert source =~ "container: trace-entries / inline-size;"
@@ -36,6 +36,12 @@ defmodule TrifleApp.Assets.TraceEntriesLayoutTest do
              ".trace-entry-timestamp {\n  grid-column: 2;\n  grid-row: 2;\n  justify-self: end;"
 
     assert source =~ ".trace-entry-timestamp {\n    grid-column: 3;\n    grid-row: 1;"
+
+    assert source =~
+             ".trace-entries[data-show-timestamps=\"true\"]:not([data-timestamp-mode=\"raw\"]) .trace-entry {\n  grid-template-columns: var(--trace-line-width, 2ch) minmax(0, 1fr) max-content;"
+
+    assert source =~
+             ".trace-entries:not([data-timestamp-mode=\"raw\"]) .trace-entry-timestamp {\n  grid-column: 3;\n  grid-row: 1;\n  white-space: nowrap;"
   end
 
   test "overview uses the page section gap without adding a widget bottom margin" do

@@ -46,10 +46,10 @@ defmodule TrifleApp.Components.TraceOverview do
         <form
           :if={!@overview.collapsed}
           phx-change="overview_controls"
-          class="flex flex-wrap items-center gap-2 text-xs"
+          class="job-overview-controls flex flex-wrap items-center gap-2 text-xs"
         >
-          <label>
-            Sort
+          <label class="job-overview-sort">
+            <span class="job-overview-control-label">Sort</span>
             <select name="sort" class="job-overview-select">
               <option
                 :for={
@@ -83,7 +83,7 @@ defmodule TrifleApp.Components.TraceOverview do
               } />
             </:button>
           </.button_group>
-          <div class="flex items-center gap-2" aria-label="Traces per page">
+          <div class="flex items-center gap-2" aria-label="Rows per page">
             <.button_group size="sm" labels="hidden">
               <:button
                 :for={{label, delta} <- [{"Fewer rows", -1}, {"More rows", 1}]}
@@ -93,7 +93,7 @@ defmodule TrifleApp.Components.TraceOverview do
                 disabled={
                   if delta == -1, do: @overview.row_count <= 1, else: @overview.row_count >= 100
                 }
-                tooltip={"#{label} · #{@overview.size} traces per page"}
+                tooltip={"#{label} · #{@overview.row_count} #{if @overview.row_count == 1, do: "row", else: "rows"} per page"}
               >
                 <.row_control_icon action={if delta == 1, do: "more", else: "fewer"} />
               </:button>
@@ -102,9 +102,9 @@ defmodule TrifleApp.Components.TraceOverview do
           <nav
             :if={@overview.total > 0}
             aria-label="Overview pagination"
-            class="ml-2 flex items-center gap-3 border-l border-slate-200 pl-4 dark:border-slate-700"
+            class="job-overview-pagination ml-2 flex items-center gap-3 border-l border-slate-200 pl-4 dark:border-slate-700"
           >
-            <span class="whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
+            <span class="job-overview-page-label whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
               Page {@overview.page} of {@overview.pages}
             </span>
             <.button_group size="sm" labels="hidden">

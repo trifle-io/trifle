@@ -314,7 +314,7 @@ input[type="checkbox"] {
 }
 
 /* Keep entry text flexible; respond to the detail panel, not the viewport.
-   Narrow panels retain full timestamps on a right-aligned second line. */
+   Only full timestamps need a second line in narrow panels. */
 .trace-entries {
   container: trace-entries / inline-size;
 }
@@ -351,6 +351,17 @@ input[type="checkbox"] {
   grid-column: 2;
   grid-row: 2;
   justify-self: end;
+}
+
+/* Compact differences fit beside the message even on a phone. */
+.trace-entries[data-show-timestamps="true"]:not([data-timestamp-mode="raw"]) .trace-entry {
+  grid-template-columns: var(--trace-line-width, 2ch) minmax(0, 1fr) max-content;
+}
+
+.trace-entries:not([data-timestamp-mode="raw"]) .trace-entry-timestamp {
+  grid-column: 3;
+  grid-row: 1;
+  white-space: nowrap;
 }
 
 @container trace-entries (min-width: 38rem) {
@@ -938,16 +949,25 @@ select[class*="grid"], select[class*="col-"] {
 }
 .dark .job-overview-select { border-color: #475569; color-scheme: dark; }
 .dark .job-overview-select option { background: #0f172a; }
-@container job-overview (min-width: 46rem) {
+@container job-overview (max-width: 40rem) {
+  .job-overview-control-label,
+  .job-overview-page-label { @apply sr-only; }
+  .job-overview-controls { width: 100%; flex-wrap: nowrap; gap: 0.25rem; }
+  .job-overview-sort { flex: 1; min-width: 0; }
+  .job-overview-controls > :not(.job-overview-sort) { flex-shrink: 0; }
+  .job-overview-sort .job-overview-select { width: 100%; min-width: 0; padding-inline-end: 1.25rem; }
+  .job-overview-controls [role="group"] > button { padding-inline: 0.5rem; }
+  .job-overview-pagination { margin-left: 0; padding-left: 0; border-left: 0; gap: 0; }
+}
+/* Keep cards wide enough for a sparkline and both gauges before adding a column. */
+@container job-overview (min-width: 56rem) {
   .job-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@container job-overview (min-width: 72rem) {
+@container job-overview (min-width: 84rem) {
   .job-overview-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@container job-tile (max-width: 32rem) {
-  .job-overview-metrics { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
-}
 @container job-tile (max-width: 24rem) {
+  .job-overview-metrics { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
   .job-overview-stat { font-size: 1.125rem; }
   .job-overview-header { gap: 0.75rem; }
 }
