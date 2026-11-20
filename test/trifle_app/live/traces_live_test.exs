@@ -482,7 +482,7 @@ defmodule TrifleApp.TracesLiveTest do
     refute Map.has_key?(params, "size")
     assert length(overview_cards(render_async(view))) == 12
 
-    for {columns, expected} <- [{2, 8}, {1, 4}, {3, 12}] do
+    for {columns, expected} <- [{2, 8}, {1, 4}, {4, 16}, {6, 24}, {3, 12}] do
       render_click(view, "overview_columns", %{"columns" => columns})
       assert length(overview_cards(render_async(view))) == expected
       assert has_element?(view, "#trace-overview[data-overview-rows='4']")

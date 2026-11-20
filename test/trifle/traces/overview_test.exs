@@ -167,7 +167,7 @@ defmodule Trifle.Traces.OverviewTest do
   end
 
   test "row preferences determine page size at each responsive column count" do
-    for columns <- 1..3, rows <- [1, 3, 4, 10] do
+    for columns <- [1, 2, 3, 4, 6], rows <- [1, 3, 4, 10] do
       controls = Overview.controls(%{}, %{rows: rows, columns: columns})
       assert controls.size == rows * columns
       assert controls.row_count == rows
@@ -179,5 +179,6 @@ defmodule Trifle.Traces.OverviewTest do
 
     assert Overview.row_count("4") == 4
     assert Overview.controls(%{}).size == 9
+    assert Overview.controls(%{}, %{columns: 5}).columns == 3
   end
 end

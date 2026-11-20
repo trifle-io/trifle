@@ -53,14 +53,24 @@ test('responsive layout changes send only new column counts and keep row prefere
   columns = '100px';
   resize();
   assert.deepEqual(events[1], ['overview_columns', {columns: 1}]);
+  for (const count of [4, 6, 3]) {
+    columns = Array(count).fill('100px').join(' ');
+    resize();
+    view.updated();
+    assert.deepEqual(events.at(-1), ['overview_columns', {columns: count}]);
+  }
+  const sent = events.length;
+  columns = Array(5).fill('100px').join(' ');
+  resize();
+  assert.equal(events.length, sent);
   assert.equal(document.cookie, undefined);
   handlers.trace_overview_rows({rows: 5});
   assert.equal(readTraceOverviewRows(document.cookie), 5);
 
   grid.clientWidth = 0;
-  columns = '100px 100px 100px';
+  columns = Array(6).fill('100px').join(' ');
   resize();
-  assert.equal(events.length, 2);
+  assert.equal(events.length, sent);
   view.destroyed();
   assert.equal(disconnected, true);
 });

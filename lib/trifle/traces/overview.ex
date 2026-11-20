@@ -16,7 +16,7 @@ defmodule Trifle.Traces.Overview do
 
   def controls(params, preferences \\ %{}) do
     rows = row_count(preferences[:rows])
-    columns = if preferences[:columns] in 1..3, do: preferences[:columns], else: 3
+    columns = if preferences[:columns] in [1, 2, 3, 4, 6], do: preferences[:columns], else: 3
 
     %{
       sort: if(params["sort"] in @sorts, do: params["sort"], else: "count"),

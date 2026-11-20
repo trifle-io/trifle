@@ -960,11 +960,26 @@ select[class*="grid"], select[class*="col-"] {
   .job-overview-pagination { margin-left: 0; padding-left: 0; border-left: 0; gap: 0; }
 }
 /* Keep cards wide enough for a sparkline and both gauges before adding a column. */
-@container job-overview (min-width: 56rem) {
-  .job-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Also require room for the settled sidebar and the page's 4rem of padding.
+   Its animated padding must not briefly enable a second column at 1024px. */
+@media (min-width: 66.25rem) {
+  @container job-overview (min-width: 56rem) {
+    :where(html[data-trifle-client-sidebar="collapsed"]) .job-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+}
+@media (min-width: 78rem) {
+  @container job-overview (min-width: 56rem) {
+    .job-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
 }
 @container job-overview (min-width: 84rem) {
   .job-overview-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container job-overview (min-width: 112rem) {
+  .job-overview-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@container job-overview (min-width: 168rem) {
+  .job-overview-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 @container job-tile (max-width: 24rem) {
   .job-overview-metrics { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }

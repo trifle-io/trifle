@@ -181,7 +181,8 @@ defmodule TrifleApp.TracesLive do
 
   def handle_event("overview_rows", _, socket), do: {:noreply, socket}
 
-  def handle_event("overview_columns", %{"columns" => columns}, socket) when columns in 1..3 do
+  def handle_event("overview_columns", %{"columns" => columns}, socket)
+      when columns in [1, 2, 3, 4, 6] do
     preferences = socket.assigns.overview_preferences
 
     if socket.assigns.query && columns != preferences.columns do

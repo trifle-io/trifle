@@ -50,7 +50,7 @@ export const createTraceOverviewPreferencesHook = ({
     const grid = this.el.querySelector('#traces-overview-grid');
     if (!grid || !grid.clientWidth) return;
     const columns = style(grid).gridTemplateColumns.trim().split(/\s+/).length;
-    if (columns < 1 || columns > 3 || columns === this.lastColumns) return;
+    if (![1, 2, 3, 4, 6].includes(columns) || columns === this.lastColumns) return;
     this.lastColumns = columns;
     this.pushEvent('overview_columns', {columns});
   }
