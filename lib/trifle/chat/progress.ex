@@ -42,6 +42,7 @@ defmodule Trifle.Chat.Progress do
       "inspecting_metric_schema" -> text(:inspecting_metric_schema, payload)
       "searching_traces" -> text(:searching_traces, payload)
       "reading_trace" -> text(:reading_trace, payload)
+      "summarizing_trace_activity" -> text(:summarizing_trace_activity, payload)
       "aggregating_series" -> text(:aggregating_series, payload)
       "formatting_series" -> text(:formatting_series, payload)
       "processing_results" -> text(:processing_results, payload)
@@ -193,6 +194,7 @@ defmodule Trifle.Chat.Progress do
 
   def text(:searching_traces, _payload), do: "Searching traces."
   def text(:reading_trace, _payload), do: "Reading trace entries and metadata."
+  def text(:summarizing_trace_activity, _payload), do: "Summarizing trace activity from Stats."
 
   def text(:processing_results, _payload), do: ensure_period("Processing tool results")
   def text(:responding, _payload), do: ensure_period("Preparing final answer")

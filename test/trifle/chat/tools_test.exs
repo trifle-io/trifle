@@ -116,7 +116,7 @@ defmodule Trifle.Chat.ToolsTest do
   end
 
   describe "definitions/1" do
-    test "includes the metric schema inspection tool and keeps key discovery argument-free" do
+    test "exposes trace statistics through discovery and metric tools with an optional source scope" do
       definitions = Tools.definitions(%{})
 
       tool_names =
@@ -130,8 +130,21 @@ defmodule Trifle.Chat.ToolsTest do
         Enum.find(definitions, &(get_in(&1, ["function", "name"]) == "inspect_metric_schema"))
 
       assert "inspect_metric_schema" in tool_names
-      assert Enum.all?(~w(list_trace_sources search_traces read_trace), &(&1 in tool_names))
-      assert get_in(list_available_metrics, ["function", "parameters", "properties"]) == %{}
+
+      assert Enum.all?(
+               ~w(list_trace_sources search_traces read_trace summarize_trace_activity),
+               &(&1 in tool_names)
+             )
+
+      assert get_in(list_available_metrics, ["function", "parameters", "required"]) == []
+
+      assert get_in(list_available_metrics, [
+               "function",
+               "parameters",
+               "properties",
+               "scope",
+               "enum"
+             ]) == ["metrics", "traces"]
 
       assert get_in(inspect_metric_schema, ["function", "parameters", "required"]) == [
                "metric_key"
@@ -171,6 +184,10 @@ defmodule Trifle.Chat.ToolsTest do
       assert prompt =~ "must not contain wildcard"
       assert prompt =~ "dashboard widget configs passed to `build_metric_dashboard`"
       assert prompt =~ "hard-capped at 1000 points"
+      assert prompt =~ ~s(call `summarize_trace_activity` with timeframe "24h")
+      assert prompt =~ "`states.error`"
+      assert prompt =~ "`duration.count`"
+      assert prompt =~ ~s(scope "traces")
     end
   end
 

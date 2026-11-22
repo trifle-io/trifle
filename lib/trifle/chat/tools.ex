@@ -12,8 +12,10 @@ defmodule Trifle.Chat.Tools do
   alias Trifle.Exports.Series, as: SeriesExport
   alias Trifle.Metrics.Query, as: MetricsQuery
   alias Trifle.Organizations
+  alias Trifle.Organizations.Database
   alias Trifle.Stats.Nocturnal.Parser, as: GranularityParser
   alias Trifle.Stats.Source
+  alias Trifle.Traces.{Activity, Overview}
   alias TrifleApp.TimeframeParsing
 
   @default_timeframe "24h"
@@ -24,6 +26,14 @@ defmodule Trifle.Chat.Tools do
   @model_path_preview_limit 50
   @model_summary_preview_limit 25
   @trace_tools ~w(list_trace_sources search_traces read_trace)
+  @metric_tools ~w(fetch_metric_timeseries aggregate_metric_series list_available_metrics inspect_metric_schema build_metric_dashboard)
+  @trace_activity_sorts %{
+    "error_count" => :error_count,
+    "error_rate_pct" => :error_rate_pct,
+    "count" => :count,
+    "average_duration_ms" => :average_duration_ms
+  }
+  @trace_activity_limit 50
 
   @type context :: %{
           required(:source) => Source.t() | nil,
@@ -244,8 +254,82 @@ defmodule Trifle.Chat.Tools do
         }
       }
     ]
+    |> Enum.map(&add_metric_scope/1)
+    |> Kernel.++([trace_activity_definition()])
     |> Kernel.++(TraceTools.definitions())
     |> maybe_add_select_source(context)
+  end
+
+  defp add_metric_scope(%{"function" => %{"name" => name}} = definition)
+       when name in @metric_tools do
+    update_in(definition, ["function", "parameters", "properties"], fn properties ->
+      Map.merge(properties, %{
+        "scope" => %{
+          "type" => "string",
+          "enum" => ["metrics", "traces"],
+          "description" =>
+            "Use traces for Stats stored by a Traces-enabled database. Defaults to metrics for the active analytics source."
+        },
+        "source_id" => trace_source_property()
+      })
+    end)
+  end
+
+  defp add_metric_scope(definition), do: definition
+
+  defp trace_source_property do
+    %{
+      "type" => "string",
+      "description" =>
+        "Optional database ID from list_trace_sources for trace statistics. Defaults to the active trace source or the only available trace source."
+    }
+  end
+
+  defp trace_activity_definition do
+    %{
+      "type" => "function",
+      "function" => %{
+        "name" => "summarize_trace_activity",
+        "description" =>
+          "Rank and summarize trace paths using the selected database's Stats counters. " <>
+            "Use for questions such as which traces are failing most, trace volume, failure rates, or average durations. " <>
+            "Reads Stats for the requested timeframe without reading individual trace records.",
+        "parameters" => %{
+          "type" => "object",
+          "properties" => %{
+            "source_id" => trace_source_property(),
+            "path" => %{
+              "type" => "string",
+              "description" => "Optional case-sensitive trace path prefix, including descendants."
+            },
+            "timeframe" => %{
+              "type" => "string",
+              "description" => "Relative timeframe, for example 24h or 7d. Overrides from/to."
+            },
+            "from" => %{"type" => "string", "description" => "ISO8601 start, paired with to."},
+            "to" => %{"type" => "string", "description" => "ISO8601 end, paired with from."},
+            "granularity" => %{
+              "type" => "string",
+              "description" => "Optional Stats bucket size supported by the database."
+            },
+            "sort_by" => %{
+              "type" => "string",
+              "enum" => Map.keys(@trace_activity_sorts),
+              "description" =>
+                "Descending ranking metric. Defaults to error_count. error_rate_pct uses traces with recognized states."
+            },
+            "limit" => %{
+              "type" => "integer",
+              "minimum" => 1,
+              "maximum" => @trace_activity_limit,
+              "description" =>
+                "Maximum paths to return. Defaults to 10. Overall totals include every matching path."
+            }
+          },
+          "additionalProperties" => false
+        }
+      }
+    }
   end
 
   defp maybe_add_select_source(definitions, %{sources: sources}) when is_list(sources) do
@@ -277,12 +361,10 @@ defmodule Trifle.Chat.Tools do
           {:ok, map()} | {:error, map()}
   def execute("fetch_metric_timeseries", arguments_json, context) do
     with {:ok, args} <- decode_args(arguments_json),
-         {:ok, source} <- ensure_source(context),
+         {:ok, source} <- ensure_source(args, context),
          {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source, context),
-         {:ok, requested_granularity} <- resolve_granularity(args, source, context),
-         {:ok, {granularity, adjusted_from}} <-
-           adjust_chat_fetch_granularity(source, requested_granularity, from, to),
+         {:ok, {from, to, timeframe_label, granularity, adjusted_from}} <-
+           metric_window(args, source, context),
          :ok <-
            Notifier.notify(
              context,
@@ -297,13 +379,13 @@ defmodule Trifle.Chat.Tools do
               }}
            ),
          {:ok, result} <-
-           Source.fetch_series(
+           metrics_module().fetch_series(
              source,
              metric_key,
              from,
              to,
              granularity,
-             progressive: false
+             metric_fetch_options(args, progressive: false)
            ),
          table <- MetricsQuery.tabularize_series(result.series) do
       summary = MetricsQuery.summarise_series(result.series)
@@ -326,6 +408,7 @@ defmodule Trifle.Chat.Tools do
         }
         |> maybe_put_requested_granularity(adjusted_from)
         |> maybe_put_table(table)
+        |> maybe_put_trace_source(args, source)
 
       {:ok, payload}
     else
@@ -342,14 +425,12 @@ defmodule Trifle.Chat.Tools do
 
   def execute("aggregate_metric_series", arguments_json, context) do
     with {:ok, args} <- decode_args(arguments_json),
-         {:ok, source} <- ensure_source(context),
+         {:ok, source} <- ensure_source(args, context),
          {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
          {:ok, value_path} <- require_string(args, "value_path", "Value path required."),
          {:ok, {aggregator_name, aggregator_fun}} <- resolve_aggregator(args["aggregator"]),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source, context),
-         {:ok, requested_granularity} <- resolve_granularity(args, source, context),
-         {:ok, {granularity, adjusted_from}} <-
-           adjust_chat_fetch_granularity(source, requested_granularity, from, to),
+         {:ok, {from, to, timeframe_label, granularity, adjusted_from}} <-
+           metric_window(args, source, context),
          {:ok, slices} <- resolve_slices(args),
          :ok <-
            Notifier.notify(
@@ -365,13 +446,13 @@ defmodule Trifle.Chat.Tools do
               }}
            ),
          {:ok, result} <-
-           Source.fetch_series(
+           metrics_module().fetch_series(
              source,
              metric_key,
              from,
              to,
              granularity,
-             progressive: false
+             metric_fetch_options(args, progressive: false)
            ),
          paths = MetricsQuery.normalize_paths(value_path),
          {:ok, resolved_path} <- MetricsQuery.ensure_single_path(paths),
@@ -411,6 +492,7 @@ defmodule Trifle.Chat.Tools do
           |> maybe_put_requested_granularity(adjusted_from)
           |> maybe_put_primary_value(slices)
           |> maybe_put_table(table)
+          |> maybe_put_trace_source(args, source)
 
         {:ok, payload}
       end
@@ -427,8 +509,8 @@ defmodule Trifle.Chat.Tools do
   end
 
   def execute("list_available_metrics", arguments_json, context) do
-    with {:ok, _args} <- decode_args(arguments_json),
-         {:ok, source} <- ensure_source(context),
+    with {:ok, args} <- decode_args(arguments_json),
+         {:ok, source} <- ensure_source(args, context),
          {:ok, granularity} <- resolve_schema_granularity(source),
          {:ok, {from, to, timeframe_label}} <- resolve_schema_timeframe(source, granularity),
          :ok <-
@@ -443,7 +525,7 @@ defmodule Trifle.Chat.Tools do
               }}
            ),
          {:ok, result} <-
-           Source.fetch_series(
+           metrics_module().fetch_series(
              source,
              @system_key,
              from,
@@ -479,7 +561,8 @@ defmodule Trifle.Chat.Tools do
          },
          paths: paths,
          total_paths: length(paths)
-       }}
+       }
+       |> maybe_put_trace_source(args, source)}
     else
       {:error, %{} = err} ->
         notify_tool_error(context, "list_available_metrics", err)
@@ -494,7 +577,7 @@ defmodule Trifle.Chat.Tools do
 
   def execute("inspect_metric_schema", arguments_json, context) do
     with {:ok, args} <- decode_args(arguments_json),
-         {:ok, source} <- ensure_source(context),
+         {:ok, source} <- ensure_source(args, context),
          {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
          {:ok, granularity} <- resolve_schema_granularity(source),
          {:ok, {from, to, timeframe_label}} <- resolve_schema_timeframe(source, granularity),
@@ -511,16 +594,16 @@ defmodule Trifle.Chat.Tools do
               }}
            ),
          {:ok, result} <-
-           Source.fetch_series(
+           metrics_module().fetch_series(
              source,
              metric_key,
              from,
              to,
              granularity,
-             progressive: false
+             metric_fetch_options(args, progressive: false)
            ),
          {:ok, payload} <- build_schema_payload(metric_key, result.series, granularity, from, to) do
-      {:ok, payload}
+      {:ok, maybe_put_trace_source(payload, args, source)}
     else
       {:error, %{} = err} ->
         notify_tool_error(context, "inspect_metric_schema", err)
@@ -597,13 +680,11 @@ defmodule Trifle.Chat.Tools do
 
   def execute("build_metric_dashboard", arguments_json, context) do
     with {:ok, args} <- decode_args(arguments_json),
-         {:ok, source} <- ensure_source(context),
+         {:ok, source} <- ensure_source(args, context),
          {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
          {:ok, grid} <- require_grid(args),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source, context),
-         {:ok, requested_granularity} <- resolve_granularity(args, source, context),
-         {:ok, {granularity, adjusted_from}} <-
-           adjust_chat_fetch_granularity(source, requested_granularity, from, to),
+         {:ok, {from, to, timeframe_label, granularity, adjusted_from}} <-
+           metric_window(args, source, context),
          :ok <-
            Notifier.notify(
              context,
@@ -623,7 +704,7 @@ defmodule Trifle.Chat.Tools do
              from,
              to,
              granularity,
-             progress_callback: nil
+             metric_fetch_options(args, progress_callback: nil)
            ),
          {:ok, series_snapshot} <- encode_series_snapshot(export),
          {:ok, visualization} <-
@@ -647,7 +728,8 @@ defmodule Trifle.Chat.Tools do
          status: "ok",
          metric_key: metric_key,
          visualization: visualization
-       }}
+       }
+       |> maybe_put_trace_source(args, source)}
     else
       {:error, :no_data} ->
         err = %{
@@ -695,6 +777,64 @@ defmodule Trifle.Chat.Tools do
            source -> to_string(Source.id(source))
          end
      }}
+  end
+
+  def execute("summarize_trace_activity", arguments_json, context) do
+    metrics = metrics_module()
+
+    with {:ok, args} <- decode_args(arguments_json),
+         {:ok, {path, sort, limit}} <- trace_activity_options(args),
+         {:ok, source} <- TraceTools.resolve_source(args, context),
+         {:ok, {from, to, label, granularity, adjusted_from}} <-
+           metric_window(Map.put(args, "scope", "traces"), source, context),
+         :ok <- Notifier.notify(context, {:progress, :summarizing_trace_activity}),
+         {:ok, input} <-
+           Activity.fetch(context.membership, Source.id(source), from, to, granularity,
+             path: path,
+             fetch_series: &metrics.fetch_series/6
+           ) do
+      rows = trace_activity_rows(input, path)
+
+      totals =
+        Enum.reduce(rows, %{}, fn row, counts ->
+          Map.merge(counts, row.states, fn _, left, right -> left + right end)
+        end)
+
+      ranked =
+        rows
+        |> Enum.sort_by(fn row ->
+          value = Map.fetch!(row, sort)
+          {is_nil(value), -(value || 0), row.path}
+        end)
+        |> Enum.take(limit)
+
+      {:ok,
+       %{
+         status: "ok",
+         trace_source: source_meta(source),
+         path: path,
+         timeframe: %{
+           from: DateTime.to_iso8601(from),
+           to: DateTime.to_iso8601(to),
+           label: label,
+           granularity: granularity
+         },
+         sort_by: sort,
+         path_count: length(rows),
+         paths: ranked,
+         totals: trace_state_totals(totals)
+       }
+       |> maybe_put_requested_granularity(adjusted_from)}
+    else
+      {:error, %{} = error} ->
+        {:error, Map.take(error, [:status, :error, :allowed])}
+
+      {:error, :unavailable} ->
+        {:error, %{status: "error", error: "This trace source is unavailable."}}
+
+      {:error, :storage_unavailable} ->
+        {:error, %{status: "error", error: "Trace Stats could not be read."}}
+    end
   end
 
   def execute(tool_name, arguments_json, context) when tool_name in @trace_tools do
@@ -778,6 +918,31 @@ defmodule Trifle.Chat.Tools do
     #{if sources_text != "", do: "Accessible sources:\n#{sources_text}", else: ""}
     #{if page_context_text not in [nil, ""], do: "\n" <> page_context_text, else: ""}
 
+    For trace activity questions such as "What traces are failing the most in the last 24h?",
+    call `summarize_trace_activity` with timeframe "24h" and sort_by "error_count". Use this tool
+    for cross-path counts, failure rates, and duration rankings. Report the database and timeframe;
+    distinguish failure counts from failure rates, and mention unclassified activity when relevant.
+    If all counts are unclassified, report that failure status is unavailable for that data.
+    Read individual trace records only when the user asks for examples, logs, arguments, or causes.
+
+    Trace Stats live in the Stats storage of the selected Traces-enabled database. The Stats system
+    key `__system__key__` has a `keys` map that catalogs observed full trace paths. Each full path
+    is its own Metrics Key. Slash-delimited parent paths are filters over descendants; the parent
+    has counters of its own only if it was tracked as an exact key. Sum recorded `count` and
+    `states.error`, `states.success`, `states.warning`, or `states.running` across buckets.
+    Average duration in milliseconds is the sum of `duration.sum` divided by the sum of
+    `duration.count`. Per-state duration samples are under `duration.states.<state>`.
+    The `entries.count` counter tracks trace entries. Missing state counts can be unclassified.
+    Internal activity is recorded at trace wrapup. Stats timeframe and retention can differ from
+    the trace index, and trace tags and metadata are absent from these aggregate counters.
+
+    For an exact trace path, use the existing metric discovery, schema, timeline, aggregate, and
+    dashboard tools with scope "traces" and the full trace path as metric_key where applicable.
+    Use `list_trace_sources` to pick a trace-enabled database when the source is unclear, then
+    pass its ID as source_id. Use the detected Traces context for requests about the current
+    Traces list or activity. If the requested summary needs a tag filter, explain that it requires
+    individual traces and distinguish that search from the Stats summary.
+
     If the user already named a Metrics Key such as `sales`, skip `list_available_metrics` and call
     `inspect_metric_schema` directly. Only call `list_available_metrics` when the user did not give you
     a concrete Metrics Key and you need to discover which keys exist. After you know the right Metrics Key,
@@ -811,7 +976,7 @@ defmodule Trifle.Chat.Tools do
     `chart_type` explicitly to `pie` or `donut`. Do not use distribution widgets for pies.
     Use only supported widget fields. `chart` and `style` are invalid; use `chart_type`.
     Use `describe_dashboard_widgets` if you need the exact widget contract. Only use supported widget
-    types and only build dashboards for the active analytics source.
+    types and use the source selected for the metric query.
 
     #{DashboardSpec.prompt_fragment()}
 
@@ -862,7 +1027,16 @@ defmodule Trifle.Chat.Tools do
   end
 
   def compact_tool_payload_for_model(tool_name, %{} = payload) do
-    compact_tool_payload(tool_name, stringify_keys(payload))
+    payload = stringify_keys(payload)
+    compact = compact_tool_payload(tool_name, payload)
+
+    case payload do
+      %{"trace_source" => source} when tool_name in @metric_tools ->
+        Map.put(compact, :trace_source, source)
+
+      _ ->
+        compact
+    end
   end
 
   def compact_tool_payload_for_model(tool_name, _payload) do
@@ -886,15 +1060,92 @@ defmodule Trifle.Chat.Tools do
     end
   end
 
-  defp ensure_source(%{source: %Source{} = source}), do: {:ok, source}
+  defp ensure_source(%{"scope" => "traces"} = args, context),
+    do: TraceTools.resolve_source(args, context)
 
-  defp ensure_source(_),
+  defp ensure_source(args, context) do
+    cond do
+      Map.get(args, "scope", "metrics") != "metrics" ->
+        {:error, %{status: "error", error: "scope must be metrics or traces."}}
+
+      Map.has_key?(args, "source_id") ->
+        {:error, %{status: "error", error: "source_id requires scope traces."}}
+
+      true ->
+        active_source(context)
+    end
+  end
+
+  defp active_source(%{source: %Source{} = source}), do: {:ok, source}
+
+  defp active_source(_),
     do:
       {:error,
        %{
          status: "error",
          error: "No analytics source selected. Ask the user to pick one."
        }}
+
+  defp metrics_module, do: Application.get_env(:trifle, :metrics_module, Trifle.Metrics)
+
+  defp metric_fetch_options(%{"scope" => "traces"}, opts),
+    do: Keyword.put(opts, :transponders, :none)
+
+  defp metric_fetch_options(_args, opts), do: opts
+
+  defp maybe_put_trace_source(payload, %{"scope" => "traces"}, source),
+    do: Map.put(payload, :trace_source, source_meta(source))
+
+  defp maybe_put_trace_source(payload, _args, _source), do: payload
+
+  defp trace_activity_options(args) do
+    path = args["path"]
+    sort = @trace_activity_sorts[Map.get(args, "sort_by", "error_count")]
+    limit = Map.get(args, "limit", 10)
+
+    cond do
+      not is_nil(path) and
+          (not is_binary(path) or byte_size(path) > 2048 or String.trim(path) == "") ->
+        {:error, %{status: "error", error: "path must be a non-empty trace path prefix."}}
+
+      is_nil(sort) ->
+        {:error, %{status: "error", error: "Invalid trace activity sort_by."}}
+
+      limit not in 1..@trace_activity_limit ->
+        {:error, %{status: "error", error: "limit must be an integer from 1 to 50."}}
+
+      true ->
+        {:ok, {path, sort, limit}}
+    end
+  end
+
+  defp trace_activity_rows(input, path) do
+    activity = Activity.build(input, path)
+
+    Enum.map(Overview.prepare(input, path, nil, activity), fn row ->
+      counts = Map.new(row.state_distribution, &{&1.state, &1.count})
+
+      Map.merge(trace_state_totals(counts), %{
+        path: row.path,
+        average_duration_ms: row.duration.average,
+        average_entries: row.lines.average
+      })
+    end)
+  end
+
+  defp trace_state_totals(states) do
+    count = Enum.sum(Map.values(states))
+    classified = count - Map.get(states, "unclassified", 0)
+    errors = Map.get(states, "error", 0)
+
+    %{
+      count: count,
+      states: states,
+      classified_count: classified,
+      error_count: errors,
+      error_rate_pct: if(classified > 0, do: errors / classified * 100)
+    }
+  end
 
   defp ensure_membership(%{membership: membership}) when not is_nil(membership),
     do: {:ok, membership}
@@ -1026,8 +1277,31 @@ defmodule Trifle.Chat.Tools do
     )
   end
 
+  defp metric_window(args, source, context) do
+    context =
+      if args["scope"] == "traces" and
+           map_get(context[:page_context], :page_type) not in [:traces, "traces"],
+         do: Map.delete(context, :page_context),
+         else: context
+
+    with {:ok, {from, to, label}} <- resolve_timeframe(args, source, context),
+         true <- DateTime.before?(from, to),
+         {:ok, requested} <- resolve_granularity(args, source, context),
+         {:ok, {granularity, adjusted_from}} <-
+           adjust_chat_fetch_granularity(source, requested, from, to) do
+      {:ok, {from, to, label, granularity, adjusted_from}}
+    else
+      false -> {:error, %{status: "error", error: "from must precede to."}}
+      error -> error
+    end
+  end
+
   defp resolve_timeframe(args, source, context, default_shorthand \\ @default_timeframe) do
-    config = Source.stats_config(source)
+    config =
+      if args["scope"] == "traces",
+        do: Database.stats_metadata_config(source.record),
+        else: Source.stats_config(source)
+
     now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
 
     cond do
@@ -1458,6 +1732,7 @@ defmodule Trifle.Chat.Tools do
   end
 
   defp compact_tool_payload(tool_name, payload) when tool_name in @trace_tools, do: payload
+  defp compact_tool_payload("summarize_trace_activity", payload), do: payload
 
   defp compact_tool_payload(_tool_name, payload) do
     %{

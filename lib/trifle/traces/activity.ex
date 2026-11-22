@@ -11,6 +11,7 @@ defmodule Trifle.Traces.Activity do
   def fetch(membership, id, from, to, granularity, opts \\ []) do
     started = System.monotonic_time(:millisecond)
     fetcher = Keyword.get(opts, :fetch_series, &Source.fetch_series/6)
+    path = Keyword.get(opts, :path)
 
     try do
       with {:ok, source} <- Reader.source(membership, id) do
@@ -22,7 +23,8 @@ defmodule Trifle.Traces.Activity do
         end
 
         with {:ok, catalog} <- read(fetch, "__system__key__", id),
-             {:ok, metrics} <- fetch_metrics(catalog_keys(catalog), fetch, id) do
+             keys = Enum.filter(catalog_keys(catalog), &matches?(&1, path)),
+             {:ok, metrics} <- fetch_metrics(keys, fetch, id) do
           {:ok, %{catalog: catalog, metrics: metrics}}
         end
       end

@@ -91,13 +91,26 @@ defmodule Trifle.Chat.TraceTools do
   end
 
   def execute(name, args, context) do
-    with %OrganizationMembership{organization_id: org_id} = membership when is_binary(org_id) <-
-           context[:membership] do
+    with {:ok, membership} <- membership(context) do
       run(name, args, context, membership, Application.get_env(:trifle, :trace_reader, Reader))
-    else
-      _ -> error("Workspace membership is unavailable for this request.")
     end
   end
+
+  def resolve_source(args, context) do
+    with {:ok, membership} <- membership(context),
+         {:ok, id} <- source_id(args, context, membership) do
+      case Reader.source(membership, id) do
+        {:ok, source} -> {:ok, source}
+        reason -> read_error(reason)
+      end
+    end
+  end
+
+  defp membership(%{membership: %OrganizationMembership{organization_id: id} = membership})
+       when is_binary(id),
+       do: {:ok, membership}
+
+  defp membership(_), do: error("Workspace membership is unavailable for this request.")
 
   defp run("list_trace_sources", _args, context, membership, _reader) do
     sources = Reader.sources(membership)

@@ -31,7 +31,7 @@ defmodule Trifle.Stats.Source.Database do
 
   @impl true
   def available_granularities(%Database{} = database) do
-    config = Database.stats_config(database)
+    config = Database.stats_metadata_config(database)
     config.track_granularities
   end
 
