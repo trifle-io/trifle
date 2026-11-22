@@ -18,6 +18,10 @@ defmodule TrifleApp.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :api_download do
+    plug :accepts, ["bin", "json"]
+  end
+
   scope "/", TrifleApp do
     pipe_through :browser
 
@@ -218,6 +222,10 @@ defmodule TrifleApp.Router do
       post("/metrics", MetricsController, :create)
       get("/metrics", MetricsController, :index)
       post("/metrics/query", MetricsQueryController, :create)
+      get("/traces", TracesController, :index)
+      get("/traces/:reference", TracesController, :show)
+      get("/traces/:reference/entries", TracesController, :entries)
+      get("/traces/:reference/attachments", TracesController, :attachments)
       get("/transponders", TranspondersController, :index)
       post("/transponders", TranspondersController, :create)
       put("/transponders/:id", TranspondersController, :update)
@@ -233,5 +241,11 @@ defmodule TrifleApp.Router do
       put("/monitors/:id", MonitorsController, :update)
       delete("/monitors/:id", MonitorsController, :delete)
     end
+  end
+
+  scope "/api/v1", TrifleApi, as: :api do
+    pipe_through [:api_download]
+
+    get("/traces/:reference/attachments/:attachment_id", TracesController, :download_attachment)
   end
 end

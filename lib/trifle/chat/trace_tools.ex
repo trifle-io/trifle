@@ -4,7 +4,7 @@ defmodule Trifle.Chat.TraceTools do
   alias Trifle.Chat.Notifier
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Stats.Source
-  alias Trifle.Traces.Reader
+  alias Trifle.Traces.{Reader, RecordData}
   alias TrifleApp.TracesLive.Query
 
   @states ~w(running success warning error)
@@ -168,7 +168,8 @@ defmodule Trifle.Chat.TraceTools do
     case reader.contents(membership, id, reference, position[:part]) do
       {:ok, %{record: record, entries: entries}} ->
         trace = summary(record, id)
-        metadata = metadata(record)
+        metadata = RecordData.metadata(record)
+        metadata = {metadata, Jason.encode!(metadata)}
 
         case position do
           %{section: "entries"} -> read_entries(trace, metadata, entries, position, page_args)
@@ -304,62 +305,11 @@ defmodule Trifle.Chat.TraceTools do
   end
 
   defp summary(record, id) do
-    %{
+    Map.merge(RecordData.summary(record), %{
       source_id: id,
-      reference: record.reference,
-      path: record.key,
-      url: Query.url(%{"source_id" => id, "reference" => record.reference}),
-      state: record.state,
-      tags: record.tags,
-      first_at: iso8601(record.first_at),
-      last_at: iso8601(record.last_at),
-      duration_ms: record.duration,
-      entry_count: record.length,
-      part_count: record.parts
-    }
+      url: Query.url(%{"source_id" => id, "reference" => record.reference})
+    })
   end
-
-  defp metadata(record) do
-    fields = %{
-      meta: record.meta,
-      context: record.context,
-      counters: record.counters,
-      retention_days: record.retention,
-      expires_at: iso8601(record.expires_at)
-    }
-
-    case Jason.encode(fields) do
-      {:ok, encoded} ->
-        {fields, encoded}
-
-      {:error, _} ->
-        # The Mongo index can return native BSON values in context.
-        fields = json_value(fields)
-        {fields, Jason.encode!(fields)}
-    end
-  end
-
-  defp json_value(%BSON.ObjectId{} = id), do: to_string(id)
-
-  defp json_value(%_{} = value) do
-    case Jason.encode(value) do
-      {:ok, encoded} -> Jason.decode!(encoded)
-      {:error, _} -> inspect(value)
-    end
-  end
-
-  defp json_value(value) when is_map(value),
-    do: Map.new(value, fn {key, item} -> {key, json_value(item)} end)
-
-  defp json_value(value) when is_list(value), do: Enum.map(value, &json_value/1)
-
-  defp json_value(value) when is_binary(value),
-    do: if(String.valid?(value), do: value, else: inspect(value))
-
-  defp json_value(value), do: value
-
-  defp iso8601(nil), do: nil
-  defp iso8601(at), do: DateTime.to_iso8601(at)
 
   defp read_entries(trace, {metadata, encoded_metadata}, entries, position, page_args) do
     page_entries = Enum.drop(entries, position.row)

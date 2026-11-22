@@ -80,11 +80,10 @@ defmodule Trifle.Traces.Reader do
             |> read_part!(record, part)
             |> Enum.with_index()
             |> Enum.flat_map(fn {entry, row} ->
-              name = field(entry, :message)
-
-              if to_string(field(entry, :type)) == "media" and safe_component?(name),
-                do: [%{name: name, size: field(entry, :size), part: part, row: row}],
-                else: []
+              case attachment(entry, part, row) do
+                nil -> []
+                attachment -> [attachment]
+              end
             end)
           end)
         else
@@ -95,6 +94,13 @@ defmodule Trifle.Traces.Reader do
     end)
   end
 
+  def attachment(entry, part, row) do
+    name = field(entry, :message)
+
+    if to_string(field(entry, :type)) == "media" and safe_component?(name),
+      do: %{name: name, size: field(entry, :size), part: part, row: row}
+  end
+
   # A download is addressed by an entry, never by a caller-supplied object name.
   def artifact(membership, id, reference, part, row, opts \\ []) do
     read(membership, id, :artifact, opts, fn config ->
@@ -102,14 +108,10 @@ defmodule Trifle.Traces.Reader do
       entries = read_part!(config, record, part)
       entry = if is_integer(row) and row >= 0, do: Enum.at(entries, row)
 
-      unless is_map(entry) and to_string(field(entry, :type)) == "media",
-        do: throw(:not_found)
-
-      name = field(entry, :message)
-      unless safe_component?(name), do: throw(:not_found)
+      descriptor = if is_map(entry), do: attachment(entry, part, row)
+      %{name: name, size: size} = descriptor || throw(:not_found)
 
       limit = max_artifact_bytes()
-      size = field(entry, :size)
       if is_number(size) and size > limit, do: throw(:too_large)
 
       body = Trifle.Traces.read_artifact(record, name, config: config)
