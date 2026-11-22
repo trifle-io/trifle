@@ -3,6 +3,7 @@ defmodule TrifleApp.DesignSystem.PathColorsTest do
 
   alias TrifleApp.DesignSystem.{ChartColors, PathColors}
   alias TrifleApp.ExploreCore
+  alias TrifleApp.PathSuggestions
 
   test "each parent assigns its own alphabetically ordered sibling colors" do
     paths = ["jobs/last", "jobs/first", "jobs", "requests/last", "jobs/first/deep"]
@@ -40,6 +41,31 @@ defmodule TrifleApp.DesignSystem.PathColorsTest do
 
     assert Phoenix.HTML.safe_to_string(html) ==
              ~s(<span style="color: #{ChartColors.color_for(0)} !important">jobs</span>.<span style="color: #{ChartColors.color_for(1)} !important">last</span>)
+  end
+
+  test "path suggestions supply the same segment colors for the label and input preview" do
+    values = %{
+      "endpoints" => %{
+        "/api/projects" => %{
+          "Archive" => %{"rollback" => 1},
+          "Zebra" => %{"rollback" => 2},
+          "operations" => %{"create" => 3, "roll.back" => 4}
+        }
+      }
+    }
+
+    options =
+      PathSuggestions.options_for_series(%{at: [~U[2026-01-01 00:00:00Z]], values: [values]})
+
+    path = ~S(endpoints./api/projects.operations.roll\.back)
+
+    assert %{"label" => html, "segment_colors" => colors} =
+             Enum.find(options, &(&1["value"] == path))
+
+    assert colors == Enum.map([0, 0, 2, 1], &ChartColors.color_for/1)
+    label = Floki.parse_fragment!(html)
+    assert Floki.attribute(label, "span", "style") == Enum.map(colors, &"color: #{&1} !important")
+    assert Floki.text(label) == "endpoints./api/projects.operations.roll.back"
   end
 
   test "trace labels escape HTML and include each slash in the preceding colored segment" do

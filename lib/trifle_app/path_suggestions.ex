@@ -1,13 +1,13 @@
 defmodule TrifleApp.PathSuggestions do
   @moduledoc """
-  Helper for sampling recent series data in order to build autocomplete options
-  for metric paths.
+  Builds metric path autocomplete options from loaded or sampled series data.
   """
 
   alias Phoenix.HTML
   alias Trifle.Stats.Source
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Stats.Tabler
+  alias TrifleApp.DesignSystem.PathColors
   alias TrifleApp.ExploreCore
 
   @one_week_seconds 7 * 24 * 60 * 60
@@ -40,11 +40,10 @@ defmodule TrifleApp.PathSuggestions do
              to,
              granularity,
              Keyword.merge([transponders: :none], opts[:fetch_opts] || [])
-           ),
-         {:ok, options} <- build_options(result.series) do
+           ) do
       {:ok,
        %{
-         options: options,
+         options: options_for_series(result.series),
          meta: %{
            granularity: granularity,
            from: from,
@@ -125,31 +124,29 @@ defmodule TrifleApp.PathSuggestions do
     end
   end
 
-  defp build_options(nil), do: {:ok, []}
+  def options_for_series(series, transponder_info \\ %{})
 
-  defp build_options(%Trifle.Stats.Series{} = series) do
-    series_map = series.series || %{}
-    build_options(series_map)
+  def options_for_series(%Trifle.Stats.Series{series: series_map}, transponder_info) do
+    options_for_series(series_map, transponder_info)
   end
 
-  defp build_options(%{at: _, values: _} = series_map) do
-    table = Tabler.tabulize(series_map)
-    paths = (table[:paths] || []) |> Enum.sort()
+  def options_for_series(%{at: _, values: _} = series_map, transponder_info) do
+    %{paths: paths} = Tabler.tabulize(series_map)
+    path_colors = PathColors.build(paths)
 
-    options =
-      Enum.map(paths, fn path ->
-        label =
-          path
-          |> ExploreCore.format_nested_path(paths, %{})
-          |> HTML.safe_to_string()
+    Enum.map(paths, fn path ->
+      label =
+        path
+        |> ExploreCore.format_nested_path(paths, transponder_info, path_colors: path_colors)
+        |> HTML.safe_to_string()
 
-        %{"value" => path, "label" => label}
-      end)
+      segment_colors = path |> PathColors.parts(path_colors) |> Enum.map(& &1.color)
 
-    {:ok, options}
+      %{"value" => path, "label" => label, "segment_colors" => segment_colors}
+    end)
   end
 
-  defp build_options(_), do: {:ok, []}
+  def options_for_series(_, _), do: []
 
   defp parse_granularity(value) do
     parser = Parser.new(value)

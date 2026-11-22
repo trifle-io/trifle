@@ -1,21 +1,6 @@
-import {pathSegments, pathTextSegments, siblingSegments} from '../utils/stats_path.mjs';
+import {pathSegments, pathTextSegments} from '../utils/stats_path.mjs';
 
 export const registerPathAutocompleteHook = (Hooks, deps = {}) => {
-const PATH_PREVIEW_COLORS = [
-  '#14b8a6',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#06b6d4',
-  '#10b981',
-  '#f97316',
-  '#ec4899',
-  '#3b82f6',
-  '#84cc16',
-  '#f43f5e',
-  '#6366f1'
-];
-
 const PATH_PREVIEW_FONT_PROPERTIES = [
   'fontFamily',
   'fontFeatureSettings',
@@ -61,53 +46,22 @@ const escapePathPreviewHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const decodeHtmlEntities = (value) => {
-  if (typeof document === 'undefined') return String(value ?? '');
-  const textarea = document.createElement('textarea');
-  textarea.innerHTML = String(value ?? '');
-  return textarea.value;
-};
-
 const suggestionLabelHtml = (item) => {
-  const value = String(item?.value ?? '');
-  const label = typeof item?.label === 'string' ? item.label : value;
-
-  if (label === value) return escapePathPreviewHtml(value);
-
-  // Phoenix safely escapes JSON inside data-paths attributes. Most browsers
-  // expose decoded attributes through dataset, but decode once here too so a
-  // label that arrives as &lt;span ...&gt; still renders as the intended annotated
-  // markup instead of literal tags.
-  return decodeHtmlEntities(label);
+  // The browser has already decoded the data-paths attribute. Keep the HTML
+  // escaping within the label so path segments are rendered as text.
+  return item.label === item.value ? escapePathPreviewHtml(item.value) : item.label;
 };
 
-const pathPreviewColorForIndex = (index) => {
-  const safeIndex = Number.isFinite(index) && index >= 0 ? index : 0;
-  return PATH_PREVIEW_COLORS[safeIndex % PATH_PREVIEW_COLORS.length] || PATH_PREVIEW_COLORS[0];
-};
+const formatAnnotatedPathPreview = (value, pathColors, defaultColor) => {
+  const labels = pathTextSegments(value);
+  const prefix = [];
 
-const pathPreviewSiblingComponents = (paths, pathSoFar) => {
-  return siblingSegments(Array.isArray(paths) ? paths : [], pathSoFar)
-    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
-};
+  return pathSegments(value)
+    .map((segment, index) => {
+      prefix.push(segment);
+      const color = pathColors.get(JSON.stringify(prefix)) ?? defaultColor;
 
-const formatAnnotatedPathPreview = (value, allPaths) => {
-  const displayPath = String(value ?? '');
-  if (!displayPath) return '';
-
-  const components = pathSegments(displayPath);
-  const labels = pathTextSegments(displayPath);
-  const pathSoFar = [];
-
-  return components
-    .map((component, componentIndex) => {
-      const siblings = pathPreviewSiblingComponents(allPaths, pathSoFar);
-      const index = Math.max(siblings.indexOf(component), 0);
-      const color = pathPreviewColorForIndex(index);
-
-      pathSoFar.push(component);
-
-      return `<span style="color: ${color} !important">${escapePathPreviewHtml(labels[componentIndex])}</span>`;
+      return `<span style="color: ${escapePathPreviewHtml(color)} !important">${escapePathPreviewHtml(labels[index])}</span>`;
     })
     .join('<span class="text-slate-400 dark:text-slate-500">.</span>');
 };
@@ -120,52 +74,52 @@ Hooks.PathAutocomplete = {
     this.matches = [];
     this.activeIndex = -1;
     this.visible = false;
-    this.suppressNextFilter = false;
+    this.suggestionsRequested = false;
+    this.suppressInput = false;
 
     this.handleInput = () => {
       this.syncPathPreview();
-      this.filterSuggestions();
+      if (!this.suppressInput) this.openSuggestions();
     };
     this.handleFocus = () => {
       this.syncPathPreview();
       this.openSuggestions();
     };
     this.handleBlur = () => {
-      this._blurTimer = setTimeout(() => this.hideSuggestions(), 100);
+      this._blurTimer = setTimeout(() => this.closeSuggestions(), 100);
     };
     this.handleKeydown = (event) => this.onKeydown(event);
+    this.repositionSuggestions = (event) => {
+      if (event.target !== this.suggestionBox) this.positionSuggestions();
+    };
 
     this.loadOptions();
     this.refreshElements();
     this.syncPathPreview();
 
-    // Show initial matches if input already has a value
     if (document.activeElement === this.input) {
-      this.filterSuggestions();
+      this.openSuggestions();
     }
   },
 
   updated() {
-    const previous = JSON.stringify(this.options || []);
-    this.loadOptions();
-
+    const optionsChanged = this.loadOptions();
     const elementsChanged = this.refreshElements();
     this.syncPathPreview();
-    if (elementsChanged) {
-      if (document.activeElement === this.input) {
-        this.filterSuggestions();
-      } else {
-        this.hideSuggestions();
-      }
-      return;
-    }
 
-    if (document.activeElement === this.input || JSON.stringify(this.options) !== previous) {
-      this.filterSuggestions();
+    if (document.activeElement !== this.input) {
+      this.closeSuggestions();
+    } else if (this.suggestionsRequested) {
+      if (optionsChanged || elementsChanged || this.input.value !== this.lastValue) {
+        this.filterSuggestions();
+      } else if (this.visible) {
+        this.positionSuggestions();
+      }
     }
   },
 
   destroyed() {
+    this.closeSuggestions();
     this.detachInputListeners();
     this.clearPathPreviewMetrics();
     if (this.input) {
@@ -190,6 +144,7 @@ Hooks.PathAutocomplete = {
       return false;
     }
 
+    this.hideSuggestions();
     this.detachInputListeners();
     this.clearPathPreviewMetrics();
     this.input = nextInput;
@@ -218,6 +173,8 @@ Hooks.PathAutocomplete = {
 
   loadOptions() {
     const raw = this.el.dataset.paths || '[]';
+    if (raw === this.loadedPaths) return false;
+    this.loadedPaths = raw;
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -236,7 +193,8 @@ Hooks.PathAutocomplete = {
         if (item && typeof item.value === 'string') {
           return {
             value: item.value,
-            label: typeof item.label === 'string' ? item.label : item.value
+            label: typeof item.label === 'string' ? item.label : item.value,
+            segmentColors: item.segment_colors
           };
         }
 
@@ -244,24 +202,28 @@ Hooks.PathAutocomplete = {
       })
       .filter(Boolean);
 
-    this.optionValues = this.options.map((item) => item.value);
+    this.pathColors = new Map();
+    for (const {value, segmentColors} of this.options) {
+      if (!Array.isArray(segmentColors)) continue;
+
+      const prefix = [];
+      pathSegments(value).forEach((segment, index) => {
+        prefix.push(segment);
+        const color = segmentColors[index];
+        if (typeof color === 'string') this.pathColors.set(JSON.stringify(prefix), color);
+      });
+    }
+    return true;
   },
 
   filterSuggestions() {
-    if (this.suppressNextFilter) {
-      this.suppressNextFilter = false;
+    if (!this.input || document.activeElement !== this.input) {
+      this.closeSuggestions();
       return;
     }
 
-    if (!this.input) return;
-
-    const hasFocus = document.activeElement === this.input;
-    if (!hasFocus) {
-      this.hideSuggestions();
-      return;
-    }
-
-    const query = (this.input.value || '').trim().toLowerCase();
+    this.lastValue = this.input.value;
+    const query = this.lastValue.trim().toLowerCase();
 
     let candidates = this.options;
     if (query) {
@@ -290,7 +252,8 @@ Hooks.PathAutocomplete = {
     items.forEach((item, index) => {
       const option = document.createElement('button');
       option.type = 'button';
-      option.className = 'w-full px-3 py-2 text-left text-sm leading-tight text-slate-700 hover:bg-teal-50 focus:outline-none dark:text-slate-200 dark:hover:bg-slate-700';
+      option.tabIndex = -1;
+      option.className = 'block w-full [overflow-wrap:anywhere] px-3 py-2 text-left text-sm leading-tight text-slate-700 hover:bg-teal-50 focus:outline-none dark:text-slate-200 dark:hover:bg-slate-700';
       option.setAttribute('role', 'option');
       option.dataset.index = index;
       option.dataset.value = item.value;
@@ -299,10 +262,8 @@ Hooks.PathAutocomplete = {
       // annotated/colorized path suggestions render instead of showing raw tags.
       option.innerHTML = suggestionLabelHtml(item);
 
-      option.addEventListener('mousedown', (event) => {
-        event.preventDefault();
-        this.selectOption(index);
-      });
+      option.addEventListener('mousedown', (event) => event.preventDefault());
+      option.addEventListener('click', () => this.selectOption(index));
 
       fragment.appendChild(option);
     });
@@ -310,16 +271,78 @@ Hooks.PathAutocomplete = {
     this.suggestionBox.innerHTML = '';
     this.suggestionBox.appendChild(fragment);
     this.suggestionBox.classList.remove('hidden');
+    if (!this.visible) this.showSuggestionsPopover();
     this.visible = true;
+    this.positionSuggestions();
+  },
+
+  showSuggestionsPopover() {
+    if (!this.suggestionBox.showPopover) return;
+
+    this.suggestionBox.showPopover();
+    window.addEventListener('scroll', this.repositionSuggestions, true);
+    window.addEventListener('resize', this.repositionSuggestions);
+    window.visualViewport?.addEventListener('scroll', this.repositionSuggestions);
+    window.visualViewport?.addEventListener('resize', this.repositionSuggestions);
+
+    // A top-layer popover can outlive the visible part of its scrolling container.
+    this.anchorObserver = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) this.closeSuggestions();
+    });
+    this.anchorObserver.observe(this.input);
+  },
+
+  positionSuggestions() {
+    const box = this.suggestionBox;
+    if (!box?.showPopover || !box.matches(':popover-open')) return;
+
+    const anchor = this.input.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const {clientWidth, clientHeight} = document.documentElement;
+    const viewportLeft = viewport?.offsetLeft ?? 0;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const gutter = 8;
+    const gap = 4;
+    const right = viewportLeft + (viewport?.width ?? clientWidth) - gutter;
+    const bottom = viewportTop + (viewport?.height ?? clientHeight) - gutter;
+    const width = Math.min(anchor.width, right - viewportLeft - gutter);
+
+    box.style.width = `${width}px`;
+    box.style.left = `${Math.max(viewportLeft + gutter, Math.min(anchor.left, right - width))}px`;
+
+    box.style.removeProperty('max-height');
+    const desiredHeight = box.offsetHeight;
+    const spaceBelow = bottom - anchor.bottom - gap;
+    const spaceAbove = anchor.top - viewportTop - gutter - gap;
+    const openAbove = desiredHeight > spaceBelow && spaceAbove > spaceBelow;
+    const height = Math.max(0, Math.min(desiredHeight, openAbove ? spaceAbove : spaceBelow));
+
+    box.style.maxHeight = `${height}px`;
+    box.style.top = `${openAbove ? anchor.top - gap - height : anchor.bottom + gap}px`;
   },
 
   openSuggestions() {
     if (this._blurTimer) clearTimeout(this._blurTimer);
+    this.suggestionsRequested = true;
     this.filterSuggestions();
+  },
+
+  closeSuggestions() {
+    this.suggestionsRequested = false;
+    this.hideSuggestions();
   },
 
   hideSuggestions() {
     if (!this.suggestionBox) return;
+    if (this.anchorObserver) {
+      this.anchorObserver.disconnect();
+      this.anchorObserver = null;
+      window.removeEventListener('scroll', this.repositionSuggestions, true);
+      window.removeEventListener('resize', this.repositionSuggestions);
+      window.visualViewport?.removeEventListener('scroll', this.repositionSuggestions);
+      window.visualViewport?.removeEventListener('resize', this.repositionSuggestions);
+      if (this.suggestionBox.matches(':popover-open')) this.suggestionBox.hidePopover();
+    }
     this.suggestionBox.classList.add('hidden');
     this.suggestionBox.innerHTML = '';
     this.visible = false;
@@ -329,7 +352,7 @@ Hooks.PathAutocomplete = {
 
   onKeydown(event) {
     if (!this.visible && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      this.filterSuggestions();
+      this.openSuggestions();
     }
 
     if (!this.visible) return;
@@ -350,7 +373,9 @@ Hooks.PathAutocomplete = {
         }
         break;
       case 'Escape':
-        this.hideSuggestions();
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeSuggestions();
         break;
       default:
         break;
@@ -360,7 +385,8 @@ Hooks.PathAutocomplete = {
   moveActive(delta) {
     if (this.matches.length === 0 || !this.suggestionBox) return;
 
-    const nextIndex = (this.activeIndex + delta + this.matches.length) % this.matches.length;
+    const current = this.activeIndex < 0 && delta < 0 ? 0 : this.activeIndex;
+    const nextIndex = (current + delta + this.matches.length) % this.matches.length;
     this.setActive(nextIndex);
   },
 
@@ -375,7 +401,9 @@ Hooks.PathAutocomplete = {
     const active = buttons[index];
     if (active) {
       active.classList.add('bg-teal-100', 'dark:bg-slate-600');
-      active.scrollIntoView({ block: 'nearest' });
+      const box = this.suggestionBox;
+      const optionBottom = active.offsetTop + active.offsetHeight;
+      box.scrollTop = Math.min(active.offsetTop, Math.max(box.scrollTop, optionBottom - box.clientHeight));
       this.activeIndex = index;
     }
   },
@@ -385,16 +413,10 @@ Hooks.PathAutocomplete = {
     if (!item || !this.input) return;
 
     this.input.value = item.value;
-    this.syncPathPreview();
-    this.suppressNextFilter = true;
-    this.hideSuggestions();
-
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (nativeInputValueSetter) {
-      nativeInputValueSetter.call(this.input, item.value);
-    }
-
+    this.closeSuggestions();
+    this.suppressInput = true;
     this.input.dispatchEvent(new Event('input', { bubbles: true }));
+    this.suppressInput = false;
     this.input.dispatchEvent(new Event('change', { bubbles: true }));
   },
 
@@ -423,7 +445,11 @@ Hooks.PathAutocomplete = {
       return;
     }
 
-    this.pathPreview.innerHTML = formatAnnotatedPathPreview(value, this.optionValues || []);
+    this.pathPreview.innerHTML = formatAnnotatedPathPreview(
+      value,
+      this.pathColors,
+      this.el.dataset.pathDefaultColor || 'currentColor'
+    );
     this.pathPreview.classList.remove('hidden');
   },
 

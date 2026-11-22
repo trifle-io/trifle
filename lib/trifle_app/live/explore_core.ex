@@ -7,7 +7,7 @@ defmodule TrifleApp.ExploreCore do
   alias TrifleApp.ChatBus
   alias TrifleApp.ChatPageContext
   alias TrifleApp.Components.DataTable
-  alias TrifleApp.DesignSystem.ChartColors
+  alias TrifleApp.DesignSystem.{ChartColors, PathColors}
   alias TrifleApp.TimeframeParsing
 
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
@@ -1804,12 +1804,11 @@ defmodule TrifleApp.ExploreCore do
       |> to_string()
 
     transponder_name = Map.get(transponder_info, transponder_lookup)
+    path_colors = Keyword.get_lazy(opts, :path_colors, fn -> PathColors.build(all_paths) end)
 
     formatted_path =
       display_path
-      |> TrifleApp.DesignSystem.PathColors.html(
-        TrifleApp.DesignSystem.PathColors.build(all_paths)
-      )
+      |> PathColors.html(path_colors)
       |> Phoenix.HTML.safe_to_string()
 
     if transponder_name do

@@ -257,6 +257,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
     refute html =~ "overflow-hidden rounded-md border border-gray-300"
     refute html =~ ~s(class="relative z-20")
     assert html =~ "top-full z-50"
+    assert html =~ ~s(popover="manual")
   end
 
   test "table editor keeps series rows in a two-line mobile layout before desktop grid" do

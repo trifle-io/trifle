@@ -7,6 +7,12 @@
 @import url("../node_modules/gridstack/dist/gridstack.min.css");
 @import url("../node_modules/gridstack/dist/gridstack-extra.min.css");
 
+[data-role="suggestions"]:popover-open {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+}
+
 [x-cloak] {
   display: none !important;
 }

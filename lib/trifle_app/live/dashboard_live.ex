@@ -11,8 +11,7 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Stats.Configuration
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
-  alias Phoenix.HTML
-  alias TrifleApp.ExploreCore
+  alias TrifleApp.PathSuggestions
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
@@ -2309,31 +2308,16 @@ defmodule TrifleApp.DashboardLive do
     do: socket
 
   defp ensure_widget_path_options(socket) do
-    options = build_widget_path_options(socket.assigns)
+    options =
+      PathSuggestions.options_for_series(
+        socket.assigns[:stats],
+        socket.assigns[:transponder_info] || %{}
+      )
 
     socket
     |> assign(:widget_path_options, options)
     |> assign(:widget_path_options_loaded, true)
   end
-
-  defp build_widget_path_options(%{stats: %Trifle.Stats.Series{series: series_map}} = assigns) do
-    table = Trifle.Stats.Tabler.tabulize(series_map)
-    paths = table[:paths] || []
-    transponder_info = Map.get(assigns, :transponder_info, %{})
-
-    sorted_paths = Enum.sort(paths)
-
-    Enum.map(sorted_paths, fn path ->
-      label =
-        path
-        |> ExploreCore.format_nested_path(sorted_paths, transponder_info)
-        |> HTML.safe_to_string()
-
-      %{"value" => path, "label" => label}
-    end)
-  end
-
-  defp build_widget_path_options(_assigns), do: []
 
   defp maybe_auto_expand_widget_paths(widget, _options) when is_map(widget) do
     normalized = Registry.normalize_widget(widget)

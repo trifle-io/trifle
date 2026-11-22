@@ -3,6 +3,8 @@ defmodule TrifleApp.Components.PathInput do
 
   use Phoenix.Component
 
+  alias TrifleApp.DesignSystem.ChartColors
+
   attr :id, :string, required: true
   attr :name, :string, required: true
   attr :value, :string, default: ""
@@ -26,6 +28,7 @@ defmodule TrifleApp.Components.PathInput do
       class={["relative", @wrapper_class]}
       phx-hook="PathAutocomplete"
       data-paths={@options_json}
+      data-path-default-color={if @annotated, do: ChartColors.primary()}
     >
       <%= if @annotated do %>
         <div
@@ -52,6 +55,7 @@ defmodule TrifleApp.Components.PathInput do
       <div
         id={"#{@id}-suggestions"}
         data-role="suggestions"
+        popover="manual"
         phx-update="ignore"
         class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 hidden"
       >
