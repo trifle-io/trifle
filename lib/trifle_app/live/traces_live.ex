@@ -6,6 +6,7 @@ defmodule TrifleApp.TracesLive do
   alias Trifle.Traces.{Activity, Overview, Reader}
   alias TrifleApp.TracesLive.{Query, Timestamps}
   alias TrifleApp.Components.Traces, as: View
+  alias TrifleApp.Components.{TraceOverview, WidgetWorkspace}
   alias TrifleApp.DesignSystem.PathColors
 
   @auto_load_parts 100
@@ -42,7 +43,7 @@ defmodule TrifleApp.TracesLive do
        activity: Activity.build(nil),
        activity_error: nil,
        activity_loading: false,
-       expanded_widget: nil,
+       expanded_overview_path: nil,
        expanded_overview_row: nil,
        path_colors: %{},
        path_color_paths: [],
@@ -146,7 +147,7 @@ defmodule TrifleApp.TracesLive do
            source: nil,
            query: nil,
            collapsed: false,
-           expanded_widget: nil,
+           expanded_overview_path: nil,
            expanded_overview_row: nil,
            activity_loading: false,
            list_loading: false,
@@ -251,17 +252,19 @@ defmodule TrifleApp.TracesLive do
 
   def handle_event("expand_widget", %{"id" => id}, socket) do
     rows = if socket.assigns.overview, do: socket.assigns.overview.rows, else: []
+    row = Enum.find(rows, &(TraceOverview.widget_id(&1.path) == id))
 
-    if socket.assigns.source &&
-         Enum.any?(rows, &(TrifleApp.Components.TraceOverview.widget_id(&1.path) == id)),
-       do: {:noreply, socket |> assign(expanded_widget: id) |> update_expanded_overview()},
-       else: {:noreply, socket}
+    if socket.assigns.source && row,
+      do:
+        {:noreply,
+         socket |> assign(expanded_overview_path: row.path) |> update_expanded_overview()},
+      else: {:noreply, socket}
   end
 
   def handle_event("expand_widget", _, socket), do: {:noreply, socket}
 
   def handle_event("close_expanded_widget", _, socket),
-    do: {:noreply, assign(socket, expanded_widget: nil, expanded_overview_row: nil)}
+    do: {:noreply, assign(socket, expanded_overview_path: nil, expanded_overview_row: nil)}
 
   def handle_event("load_more", _, socket) do
     if socket.assigns.cursor && !socket.assigns.list_loading,
@@ -520,7 +523,7 @@ defmodule TrifleApp.TracesLive do
         |> assign(
           activity_input: nil,
           activity_version: socket.assigns.activity_version + 1,
-          expanded_widget: nil,
+          expanded_overview_path: nil,
           expanded_overview_row: nil
         )
         |> rebuild_activity()
@@ -593,28 +596,26 @@ defmodule TrifleApp.TracesLive do
     if changed?, do: update_expanded_overview(socket), else: socket
   end
 
-  defp update_expanded_overview(socket) do
-    row =
-      if socket.assigns.expanded_widget do
-        Enum.find(
-          socket.assigns.overview_rows || [],
-          &(TrifleApp.Components.TraceOverview.widget_id(&1.path) ==
-              socket.assigns.expanded_widget)
-        )
-      end
+  defp update_expanded_overview(%{assigns: %{expanded_overview_path: path}} = socket)
+       when is_binary(path) do
+    row = Enum.find(socket.assigns.overview_rows || [], &(&1.path == path))
 
     expanded =
-      if row,
-        do:
-          Overview.expand(
-            row,
-            socket.assigns.activity_input,
-            socket.assigns.query.filters[:state],
-            socket.assigns.activity
-          )
+      if row do
+        Overview.expand(
+          row,
+          socket.assigns.activity_input,
+          socket.assigns.query.filters[:state],
+          socket.assigns.activity
+        )
+      else
+        %{path: path, series: [], points: [], state_distribution: []}
+      end
 
     assign(socket, expanded_overview_row: expanded)
   end
+
+  defp update_expanded_overview(socket), do: socket
 
   defp update_path_colors(socket) do
     paths = socket.assigns.activity.paths ++ Enum.map(socket.assigns.traces, & &1.key)
@@ -779,64 +780,69 @@ defmodule TrifleApp.TracesLive do
         </.live_component>
         <div class="traces-scrollport">
           <div class="traces-content">
-            <TrifleApp.Components.TraceOverview.content
-              overview={@overview}
-              params={@overview_params}
-              path_colors={@path_colors}
-              loading={@activity_loading}
-              error={@activity_error}
+            <TraceOverview.expanded
+              :if={@expanded_overview_row}
+              row={@expanded_overview_row}
               timezone={@query.config.time_zone}
-              state={@overview_state}
+              path_colors={@path_colors}
             />
-            <div
-              id="trace-panels"
-              class="trace-panels flex rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+            <WidgetWorkspace.background
+              id="trace-browser"
+              class="contents"
+              expanded={!is_nil(@expanded_overview_row)}
             >
-              <View.list
-                traces={@traces}
+              <TraceOverview.content
+                overview={@overview}
+                params={@overview_params}
                 path_colors={@path_colors}
-                params={@params}
-                selected={@query.reference}
-                collapsed={@collapsed}
-                loading={@list_loading}
-                error={@list_error}
-                cursor={@cursor}
-                filters_open={@list_filters_open}
+                loading={@activity_loading}
+                error={@activity_error}
+                timezone={@query.config.time_zone}
+                state={@overview_state}
               />
-              <View.detail
-                params={@params}
-                record={@record}
-                path_colors={@path_colors}
-                entries={@entries}
-                expanded_returns={@expanded_returns}
-                selected={@query.reference}
-                collapsed={@collapsed}
-                loading={@detail_loading}
-                error={@detail_error}
-                part={@part}
-                source_id={Source.id(@source)}
-                trace_config={@source.record.trace_config}
-                timestamp_mode={@timestamp_mode}
-                previews={@previews}
-                preview_loading={@preview_loading}
-                preview_error={@preview_error}
-                attachments={@attachments}
-                footer_section={@footer_section}
-                attachments_requested={@attachments_requested}
-                attachments_loading={@attachments_loading}
-                attachments_error={@attachments_error}
-                attachments_next_part={@attachments_next_part}
-              />
-            </div>
+              <div
+                id="trace-panels"
+                class="trace-panels flex rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+              >
+                <View.list
+                  traces={@traces}
+                  path_colors={@path_colors}
+                  params={@params}
+                  selected={@query.reference}
+                  collapsed={@collapsed}
+                  loading={@list_loading}
+                  error={@list_error}
+                  cursor={@cursor}
+                  filters_open={@list_filters_open}
+                />
+                <View.detail
+                  params={@params}
+                  record={@record}
+                  path_colors={@path_colors}
+                  entries={@entries}
+                  expanded_returns={@expanded_returns}
+                  selected={@query.reference}
+                  collapsed={@collapsed}
+                  loading={@detail_loading}
+                  error={@detail_error}
+                  part={@part}
+                  source_id={Source.id(@source)}
+                  trace_config={@source.record.trace_config}
+                  timestamp_mode={@timestamp_mode}
+                  previews={@previews}
+                  preview_loading={@preview_loading}
+                  preview_error={@preview_error}
+                  attachments={@attachments}
+                  footer_section={@footer_section}
+                  attachments_requested={@attachments_requested}
+                  attachments_loading={@attachments_loading}
+                  attachments_error={@attachments_error}
+                  attachments_next_part={@attachments_next_part}
+                />
+              </div>
+            </WidgetWorkspace.background>
           </div>
         </div>
-        <%!-- Keep the fixed modal outside size containment and the scrollport. --%>
-        <TrifleApp.Components.TraceOverview.expanded
-          :if={@expanded_overview_row}
-          row={@expanded_overview_row}
-          timezone={@query.config.time_zone}
-          path_colors={@path_colors}
-        />
       <% else %>
         <div class="mx-auto max-w-xl py-16">
           <h1 class="text-xl font-semibold">Traces</h1>

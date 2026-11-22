@@ -23,6 +23,7 @@ defmodule TrifleApp.MonitorLive do
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
     Distribution,
+    ExpandedChart,
     Kpi,
     LayoutTree,
     Table,
@@ -34,8 +35,8 @@ defmodule TrifleApp.MonitorLive do
 
   alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.SegmentFilters
+  alias TrifleApp.Components.WidgetWorkspace
 
-  alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.MonitorComponents
   alias TrifleApp.MonitorAlertFormComponent
   alias TrifleApp.MonitorsLive.FormComponent
@@ -1926,12 +1927,12 @@ defmodule TrifleApp.MonitorLive do
 
   defp maybe_refresh_expanded_widget(socket) do
     case socket.assigns[:expanded_widget] do
-      %{widget_id: widget_id} ->
+      %{widget_id: widget_id} = expanded ->
         refreshed =
           socket.assigns.insights_dashboard
           |> find_monitor_widget(widget_id)
           |> case do
-            nil -> nil
+            nil -> Map.take(expanded, [:widget_id, :title, :type])
             widget -> build_monitor_expanded_widget(socket, widget)
           end
 
@@ -2515,7 +2516,12 @@ defmodule TrifleApp.MonitorLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@monitor} id="monitor-page-root" phx-hook="FileDownload" class="space-y-8">
+    <div
+      :if={@monitor}
+      id="monitor-page-root"
+      phx-hook="FileDownload"
+      class="flex min-h-[100dvh] flex-col space-y-8"
+    >
       <iframe
         name="download_iframe"
         style="display:none"
@@ -2707,6 +2713,7 @@ defmodule TrifleApp.MonitorLive do
       </div>
 
       <% summary = monitor_summary_stats(assigns) %>
+      <% export_params = build_monitor_export_params(assigns) %>
 
       <.live_component
         module={TrifleApp.Components.FilterBar}
@@ -2751,9 +2758,32 @@ defmodule TrifleApp.MonitorLive do
         </p>
       </div>
 
-      <div class="grid gap-6 lg:grid-cols-3">
+      <WidgetWorkspace.panel
+        :if={@expanded_widget}
+        id="monitor-widget-workspace"
+        title={@expanded_widget.title}
+        type={@expanded_widget.type}
+      >
+        <%= if @expanded_widget.type == "table" do %>
+          <DataTable.expanded id={@expanded_widget.widget_id} dataset={@expanded_widget[:table_data]} />
+        <% else %>
+          <ExpandedChart.content
+            id={"expanded-widget-#{@expanded_widget.widget_id}"}
+            title={@expanded_widget.title}
+            type={@expanded_widget.type}
+            chart={@expanded_widget[:chart_data]}
+            visual={@expanded_widget[:visual_data]}
+            text={@expanded_widget[:text_data]}
+          />
+        <% end %>
+      </WidgetWorkspace.panel>
+
+      <WidgetWorkspace.background
+        id="monitor-insights"
+        class="grid gap-6 lg:grid-cols-3"
+        expanded={!is_nil(@expanded_widget)}
+      >
         <div class="lg:col-span-2 space-y-4">
-          <% export_params = build_monitor_export_params(assigns) %>
           <div class="flex items-center gap-3">
             <h3 class="text-base font-semibold text-slate-900 dark:text-white">
               Monitor insights
@@ -3017,11 +3047,10 @@ defmodule TrifleApp.MonitorLive do
             show_details_event="show_execution_details"
           />
         </div>
-      </div>
+      </WidgetWorkspace.background>
 
       <%= if summary do %>
         <.dashboard_footer
-          class="mt-8"
           summary={summary}
           source={@source}
           load_duration_microseconds={@load_duration_microseconds}
@@ -3153,97 +3182,6 @@ defmodule TrifleApp.MonitorLive do
           summary={summary}
           show_error_modal={@show_error_modal}
         />
-      <% end %>
-
-      <%= if @expanded_widget do %>
-        <.app_modal
-          id="monitor-widget-expand-modal"
-          show={true}
-          size="full"
-          on_cancel={JS.push("close_expanded_widget")}
-        >
-          <:title>
-            <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <div class="flex items-center gap-3">
-                <span>{@expanded_widget.title}</span>
-                <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
-                  {String.capitalize(@expanded_widget.type || "widget")}
-                </span>
-              </div>
-            </div>
-          </:title>
-          <:body>
-            <%= if @expanded_widget.type == "table" do %>
-              <% table_data = @expanded_widget[:table_data] %>
-              <% aggrid_payload = DataTable.to_aggrid_payload(table_data, %{}) %>
-              <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
-                <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                  <%= cond do %>
-                    <% is_nil(table_data) -> %>
-                      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                        Configure this widget with a path to display table data.
-                      </div>
-                    <% aggrid_payload -> %>
-                      <div
-                        id={"expanded-aggrid-shell-#{@expanded_widget.widget_id}"}
-                        class="aggrid-table-shell flex-1 flex flex-col min-h-0"
-                        data-role="aggrid-table"
-                        data-theme="light"
-                        phx-hook="ExpandedAgGridTable"
-                        data-table={Jason.encode!(aggrid_payload)}
-                      >
-                        <div
-                          id={"expanded-aggrid-root-#{@expanded_widget.widget_id || "new"}"}
-                          class="flex-1 min-h-0 ag-theme-alpine"
-                          data-role="aggrid-table-root"
-                          phx-update="ignore"
-                          style="width: 100%; min-height: 400px;"
-                        >
-                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
-                            Loading AG Grid table...
-                          </div>
-                        </div>
-                      </div>
-                    <% true -> %>
-                      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                        {Map.get(table_data || %{}, :empty_message, "No data available yet.")}
-                      </div>
-                  <% end %>
-                </div>
-              </div>
-            <% else %>
-              <div
-                id={"expanded-widget-#{@expanded_widget.widget_id}"}
-                class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
-                phx-hook="ExpandedWidgetView"
-                data-type={@expanded_widget.type}
-                data-title={@expanded_widget.title}
-                data-colors={ChartColors.json_palette()}
-                data-chart={
-                  if @expanded_widget[:chart_data],
-                    do: Jason.encode!(@expanded_widget.chart_data)
-                }
-                data-visual={
-                  if @expanded_widget[:visual_data],
-                    do: Jason.encode!(@expanded_widget.visual_data)
-                }
-                data-text={
-                  if @expanded_widget[:text_data],
-                    do: Jason.encode!(@expanded_widget.text_data)
-                }
-              >
-                <div class="flex-1 min-h-[500px]">
-                  <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                    <div data-role="chart" class="h-full w-full"></div>
-                  </div>
-                </div>
-                <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
-                  <div data-role="table-root" class="h-full w-full overflow-auto"></div>
-                </div>
-              </div>
-            <% end %>
-          </:body>
-        </.app_modal>
       <% end %>
 
       <.app_modal

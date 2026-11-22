@@ -27,6 +27,11 @@ body.trifle-sidebar-open {
   }
 }
 
+/* Keep the footer at the viewport edge when the page reaches its scroll limit. */
+[data-sidebar-content="client"] > main > div:has([data-dashboard-footer]) {
+  padding-bottom: 0;
+}
+
 @media (min-width: 1024px) {
   html[data-trifle-client-sidebar="expanded"] [data-sidebar-shell="client"] {
     width: 18rem;

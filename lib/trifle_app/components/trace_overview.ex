@@ -1,5 +1,6 @@
 defmodule TrifleApp.Components.TraceOverview do
   use TrifleApp, :html
+  alias TrifleApp.Components.WidgetWorkspace
   alias TrifleApp.TracesLive.Query
   alias TrifleApp.DesignSystem.{ChartColors, PathColors, TraceStates}
 
@@ -240,25 +241,18 @@ defmodule TrifleApp.Components.TraceOverview do
       states: Enum.map(assigns.row.state_distribution, & &1.state)
     }
 
-    assigns = assign(assigns, :chart, chart)
+    assigns = assign(assigns, :chart, if(assigns.row.points == [], do: nil, else: chart))
 
     ~H"""
-    <.app_modal
-      id="traces-overview-expanded-widget"
-      show={true}
-      size="full"
-      on_cancel={JS.push("close_expanded_widget")}
-    >
-      <:title><span class="break-all">{PathColors.html(@row.path, @path_colors, "/")}</span></:title>
-      <:body>
-        <TrifleApp.Components.DashboardWidgets.ExpandedChart.content
-          id={"expanded-" <> widget_id(@row.path)}
-          title={@row.path}
-          type="trace_overview"
-          chart={@chart}
-        />
-      </:body>
-    </.app_modal>
+    <WidgetWorkspace.panel id="traces-overview-expanded-widget" title={@row.path}>
+      <:heading>{PathColors.html(@row.path, @path_colors, "/")}</:heading>
+      <TrifleApp.Components.DashboardWidgets.ExpandedChart.content
+        id={"expanded-" <> widget_id(@row.path)}
+        title={@row.path}
+        type="trace_overview"
+        chart={@chart}
+      />
+    </WidgetWorkspace.panel>
     """
   end
 

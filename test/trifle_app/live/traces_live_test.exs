@@ -704,21 +704,41 @@ defmodule TrifleApp.TracesLiveTest do
     end
   end
 
-  test "overview widgets expand through the dashboard modal without fetching again", %{
+  test "expanded overview stays below the FilterBar across granularity and path changes", %{
     conn: conn,
     database: database
   } do
-    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}")
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&granularity=1h")
     [payload | _] = overview_cards(render_async(view))
-    assert_receive {:trace_activity, _}
+    assert_receive {:trace_activity, "1h"}
 
     render_click(view, "expand_widget", %{"id" => payload["id"]})
-    assert has_element?(view, "#traces-overview-expanded-widget")
+
+    assert has_element?(
+             view,
+             "#traces-filter-bar-shortcuts ~ .traces-scrollport section#traces-overview-expanded-widget"
+           )
+
+    assert has_element?(view, "#trace-browser[inert] #trace-panels")
     assert has_element?(view, "[phx-hook='ExpandedWidgetView'][data-type='trace_overview']")
     refute_receive {:trace_activity, _}
 
-    render_click(view, "close_expanded_widget")
+    view |> element(~s([data-filter-bar-granularity="1d"])) |> render_click()
+    assert_patch(view)
+    render_async(view)
+    assert_receive {:trace_activity, "1d"}
+    assert has_element?(view, "#traces-overview-expanded-widget", payload["title"])
+
+    view |> form("#trace-filters", %{path: "unmatched"}) |> render_submit()
+    assert_patch(view)
+    render_async(view)
+
+    assert has_element?(view, "#traces-overview-expanded-widget", payload["title"])
+    refute has_element?(view, "#traces-overview-expanded-widget [data-chart]")
+
+    view |> element("#traces-overview-expanded-widget [data-workspace-close]") |> render_click()
     refute has_element?(view, "#traces-overview-expanded-widget")
+    refute has_element?(view, "#trace-browser[inert]")
     render_click(view, "expand_widget", %{"id" => "missing"})
     refute has_element?(view, "#traces-overview-expanded-widget")
   end
@@ -802,7 +822,7 @@ defmodule TrifleApp.TracesLiveTest do
 
     assert Floki.find(
              doc,
-             "#traces-root.traces-workspace > .traces-scrollport > .traces-content > #trace-panels.trace-panels"
+             "#traces-root.traces-workspace > .traces-scrollport > .traces-content > #trace-browser.contents > #trace-panels.trace-panels"
            ) != []
 
     assert Floki.find(doc, "#trace-panels > #trace-list.trace-list-split.overflow-auto") != []
@@ -1718,8 +1738,8 @@ defmodule TrifleApp.TracesLiveTest do
     assert_receive {:trace_activity, "1h"}
     assert_receive {:trace_search, _}
     expand_overview(view, "jobs/App.Worker")
-    assert has_element?(view, "#traces-root > #traces-overview-expanded-widget")
-    refute has_element?(view, ".traces-scrollport #traces-overview-expanded-widget")
+    assert has_element?(view, ".traces-content > section#traces-overview-expanded-widget")
+    refute has_element?(view, "#traces-overview-expanded-widget[aria-modal]")
     assert has_element?(view, "#traces-overview-expanded-widget [phx-hook='ExpandedWidgetView']")
     assert has_element?(view, "#traces-overview-expanded-widget [data-role='table-root']")
 
@@ -1804,7 +1824,8 @@ defmodule TrifleApp.TracesLiveTest do
     view |> form("#trace-filters", %{path: "jobs", state: "running"}) |> render_submit()
     render_async(view)
     assert activity_payload(view)["series"] == []
-    refute has_element?(view, "#traces-overview-expanded-widget")
+    assert has_element?(view, "#traces-overview-expanded-widget", "jobs/App.Worker")
+    refute has_element?(view, "#traces-overview-expanded-widget [data-chart]")
   end
 
   test "overview safely shows an empty path and ignores the retired activity expansion", %{

@@ -745,16 +745,91 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
 
-    refute has_element?(view, "#widget-workspace-modal")
+    refute has_element?(view, "#widget-workspace")
 
     html = render_click(view, "open_widget_editor", %{"id" => "widget-1"})
-    assert has_element?(view, "#widget-workspace-modal")
-    assert has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"edit\"]")
+    assert has_element?(view, "#dashboard_filter_bar-shortcuts ~ section#widget-workspace")
+    assert has_element?(view, "#widget-workspace button[phx-value-tab=\"edit\"]")
+    assert has_element?(view, "#dashboard-grid-container[inert] #dashboard-grid")
     assert html =~ ~s(phx-hook="DeferredFormInputs")
     assert html =~ ~s(data-deferred-input-debounce="600")
 
     render_click(view, "set_widget_workspace_tab", %{"tab" => "summary"})
-    assert has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"summary\"]")
+    assert has_element?(view, "#widget-workspace button[phx-value-tab=\"summary\"]")
+  end
+
+  test "workspace filters refresh the preview and preserve unsaved widget edits", %{
+    conn: conn,
+    dashboard: dashboard,
+    database: database,
+    membership: membership
+  } do
+    widget = %{
+      "id" => "widget-1",
+      "type" => "timeseries",
+      "title" => "Requests",
+      "paths" => ["count"],
+      "x" => 0,
+      "y" => 0,
+      "w" => 4,
+      "h" => 2
+    }
+
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
+        payload: %{"grid" => [widget]}
+      })
+
+    config = database |> Source.from_database() |> Source.stats_config()
+    config = %{config | buffer_enabled: false, storage: nil}
+
+    assert {:ok, _} =
+             Trifle.Stats.track(dashboard.key, ~U[2026-01-01 01:30:00Z], %{"count" => 11}, config)
+
+    assert {:ok, _} =
+             Trifle.Stats.track(dashboard.key, ~U[2026-01-01 03:30:00Z], %{"count" => 22}, config)
+
+    params = %{from: "2026-01-01 02:00:00", to: "2026-01-01 04:00:00", granularity: "1h"}
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}?#{params}")
+    render_async(view)
+
+    render_click(view, "expand_widget", %{"id" => "widget-1"})
+    assert has_element?(view, ~s(#workspace-widget-widget-1[data-tab="summary"]))
+    assert workspace_chart_values(view) == [22]
+
+    view |> element(~s([data-filter-bar-action="timeframe-backward"])) |> render_click()
+    assert_patch(view)
+    render_async(view)
+
+    assert has_element?(view, ~s(#workspace-widget-widget-1[data-tab="summary"]))
+    assert workspace_chart_values(view) == [11]
+
+    view |> element(~s(#widget-workspace button[phx-value-tab="edit"])) |> render_click()
+    view |> form("#widget-workspace-form", %{widget_title: "Draft requests"}) |> render_change()
+
+    view |> element(~s([data-filter-bar-granularity="1m"])) |> render_click()
+
+    assert %{"granularity" => "1m"} =
+             view |> assert_patch() |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+    render_async(view)
+    assert has_element?(view, ~s(#workspace-widget-widget-1[data-tab="edit"]))
+    assert has_element?(view, ~s(#widget_title[value="Draft requests"]))
+    assert has_element?(view, "#widget-workspace", "Unsaved changes")
+  end
+
+  defp workspace_chart_values(view) do
+    view
+    |> element("#workspace-widget-widget-1")
+    |> render()
+    |> Floki.parse_fragment!()
+    |> Floki.attribute("data-chart")
+    |> hd()
+    |> Jason.decode!()
+    |> get_in(["series", Access.at(0), "data"])
+    |> Enum.map(fn [_timestamp, value] -> value end)
+    |> Enum.reject(&is_nil/1)
   end
 
   test "shows discard confirmation for unsaved changes and can cancel/confirm close", %{
@@ -777,15 +852,16 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert has_element?(
              view,
-             "#widget-workspace-modal",
+             "#widget-workspace",
              "You have unsaved changes. Discard them and close?"
            )
 
     render_click(view, "cancel_close_widget_workspace", %{})
-    assert has_element?(view, "#widget-workspace-modal")
+    assert has_element?(view, "#widget-workspace")
 
     render_click(view, "confirm_close_widget_workspace", %{})
-    refute has_element?(view, "#widget-workspace-modal")
+    refute has_element?(view, "#widget-workspace")
+    assert has_element?(view, "#dashboard-grid-container:not([inert]) #dashboard-grid")
   end
 
   test "updates workspace preview title immediately while editing", %{
@@ -804,7 +880,7 @@ defmodule TrifleApp.DashboardLiveTest do
       "text_payload" => "<h2>Hello</h2>"
     })
 
-    assert has_element?(view, "#widget-workspace-modal", "Live Preview Title")
+    assert has_element?(view, "#widget-workspace", "Live Preview Title")
   end
 
   test "workspace title input uses the same dark surface as the rest of the editor", %{
@@ -1455,9 +1531,9 @@ defmodule TrifleApp.DashboardLiveTest do
 
     render_click(view, "open_widget_editor", %{"id" => "group-1"})
 
-    assert has_element?(view, "#widget-workspace-modal", "Widget Group")
-    assert has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"edit\"]")
-    refute has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"summary\"]")
+    assert has_element?(view, "#widget-workspace", "Widget Group")
+    assert has_element?(view, "#widget-workspace button[phx-value-tab=\"edit\"]")
+    refute has_element?(view, "#widget-workspace button[phx-value-tab=\"summary\"]")
 
     render_submit(view, "save_widget", %{
       "widget_id" => "group-1",

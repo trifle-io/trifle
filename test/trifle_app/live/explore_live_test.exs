@@ -32,6 +32,35 @@ defmodule TrifleApp.ExploreLiveTest do
     refute html =~ "No sources available in Explore"
   end
 
+  test "expanded charts stay below the FilterBar while granularity changes", %{conn: conn} do
+    user = AccountsFixtures.user_fixture()
+    organization = organization_fixture(%{user: user})
+    app_entitlement_fixture(organization)
+    database = database_fixture(%{organization: organization})
+    {:ok, _} = Organizations.setup_database(database)
+
+    {:ok, view, _html} =
+      live(
+        log_in_user(conn, user),
+        ~p"/explore?source_type=database&source_id=#{database.id}&timeframe=24h&granularity=1h"
+      )
+
+    render_async(view)
+    render_click(view, "expand_widget", %{"id" => "explore-activity"})
+    assert has_element?(view, "#explore-filter-bar-shortcuts ~ section#explore-expanded-widget")
+    assert has_element?(view, "#explore-widgets[inert] #dashboard-grid")
+    assert has_element?(view, "#explore-expanded-widget", "Activity")
+
+    view |> element(~s([data-filter-bar-granularity="1d"])) |> render_click()
+    assert assert_patch(view) =~ "granularity=1d"
+    render_async(view)
+    assert has_element?(view, "#explore-expanded-widget", "Activity")
+
+    view |> element("#explore-expanded-widget [data-workspace-close]") |> render_click()
+    refute has_element?(view, "#explore-expanded-widget")
+    refute has_element?(view, "#explore-widgets[inert]")
+  end
+
   defp tailscale_database_conn(conn) do
     user = AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: user})

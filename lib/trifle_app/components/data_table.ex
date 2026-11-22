@@ -16,6 +16,47 @@ defmodule TrifleApp.Components.DataTable do
           empty_message: String.t()
         }
 
+  attr :id, :string, required: true
+  attr :dataset, :map, default: nil
+  attr :transponder_info, :map, default: %{}
+
+  def expanded(assigns) do
+    assigns =
+      assign(assigns, :payload, to_aggrid_payload(assigns.dataset, assigns.transponder_info))
+
+    ~H"""
+    <div class="flex h-full min-h-0 flex-col rounded-lg border border-gray-200/80 bg-white p-4 dark:border-slate-700/60 dark:bg-slate-900/40">
+      <%= if @payload do %>
+        <div
+          id={"expanded-aggrid-shell-#{@id}"}
+          class="aggrid-table-shell flex min-h-0 flex-1 flex-col"
+          data-role="aggrid-table"
+          data-theme="light"
+          phx-hook="ExpandedAgGridTable"
+          data-table={Jason.encode!(@payload)}
+        >
+          <div
+            id={"expanded-aggrid-root-#{@id}"}
+            class="ag-theme-alpine min-h-0 w-full flex-1"
+            data-role="aggrid-table-root"
+            phx-update="ignore"
+          >
+            <div class="flex h-full items-center justify-center text-center text-sm text-slate-500 dark:text-slate-300">
+              Loading AG Grid table...
+            </div>
+          </div>
+        </div>
+      <% else %>
+        <div class="flex flex-1 items-center justify-center text-center text-sm text-slate-500 dark:text-slate-300">
+          {if @dataset,
+            do: Map.get(@dataset, :empty_message, "No data available yet."),
+            else: "Configure this widget with a path to display table data."}
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
   attr :dataset, :map, required: true
   attr :transponder_info, :map, default: %{}
   attr :outer_class, :string, default: nil

@@ -82,6 +82,30 @@ defmodule TrifleApp.MonitorLiveTest do
     refute html =~ "top: 33%;"
   end
 
+  test "expanded insights stay below the FilterBar while granularity changes", %{
+    conn: conn,
+    monitor: monitor,
+    database: database
+  } do
+    {:ok, _} = Organizations.setup_database(database)
+    {:ok, view, _html} = live(conn, ~p"/monitors/#{monitor.id}")
+    render_async(view)
+
+    render_click(view, "expand_widget", %{"id" => Monitors.AlertSeries.source_widget_id(monitor)})
+    assert has_element?(view, "#monitor_filter_bar-shortcuts ~ section#monitor-widget-workspace")
+    assert has_element?(view, "#monitor-insights[inert]")
+    assert has_element?(view, "#monitor-widget-workspace", "Source series")
+
+    view |> element(~s([data-filter-bar-granularity="1d"])) |> render_click()
+    assert_push_event(view, "monitor_widget_export_params", %{params: %{"granularity" => "1d"}})
+    render_async(view)
+    assert has_element?(view, "#monitor-widget-workspace", "Source series")
+
+    view |> element("#monitor-widget-workspace [data-workspace-close]") |> render_click()
+    refute has_element?(view, "#monitor-widget-workspace")
+    refute has_element?(view, "#monitor-insights[inert]")
+  end
+
   test "report segment filters update the preview and exports without saving monitor defaults", %{
     conn: conn,
     user: user,

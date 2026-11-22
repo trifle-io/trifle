@@ -28,7 +28,7 @@ defmodule TrifleApp.Components.DashboardFooter do
     <div class="contents" x-data="{ footerExpanded: false, shortcutsOpen: false }">
       <div
         class={[
-          "sticky bottom-0 z-30 w-full rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/70 dark:shadow-none",
+          "sticky bottom-0 z-30 mt-auto w-full shrink-0 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/70 dark:shadow-none",
           @class
         ]}
         data-dashboard-footer

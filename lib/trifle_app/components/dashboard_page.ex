@@ -22,6 +22,7 @@ defmodule TrifleApp.Components.DashboardPage do
   alias TrifleApp.Components.DashboardWidgets.EditorIcons
   alias TrifleApp.Components.DashboardWidgets.WidgetEditor
   alias TrifleApp.Components.DashboardWidgets.WidgetView
+  alias TrifleApp.Components.WidgetWorkspace
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.Granularity
 
@@ -42,7 +43,7 @@ defmodule TrifleApp.Components.DashboardPage do
     ~H"""
     <div
       id="dashboard-page-root"
-      class="flex flex-col dark:bg-slate-900 min-h-screen relative"
+      class="relative flex min-h-[100dvh] flex-col dark:bg-slate-900"
       phx-hook="FileDownload"
     >
       <%= if @print_mode do %>
@@ -112,7 +113,11 @@ defmodule TrifleApp.Components.DashboardPage do
           <div class="flex items-center justify-between">
             <!-- Left: Title only -->
             <div class="min-w-0">
-              <h1 class="truncate text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+              <h1
+                id="dashboard-page-title"
+                tabindex="-1"
+                class="truncate text-2xl font-semibold tracking-tight text-gray-900 dark:text-white"
+              >
                 {assigns[:page_title] || @dashboard.name}
               </h1>
             </div>
@@ -128,7 +133,8 @@ defmodule TrifleApp.Components.DashboardPage do
                     <button
                       id={add_btn_id}
                       type="button"
-                      class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+                      disabled={!is_nil(@widget_workspace)}
+                      class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 disabled:hidden"
                       title="Add widget"
                     >
                       <svg
@@ -148,7 +154,8 @@ defmodule TrifleApp.Components.DashboardPage do
                     <button
                       id={add_group_btn_id}
                       type="button"
-                      class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600"
+                      disabled={!is_nil(@widget_workspace)}
+                      class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 disabled:hidden"
                       title="Add widget group"
                     >
                       <svg
@@ -421,39 +428,44 @@ defmodule TrifleApp.Components.DashboardPage do
           payload) whenever anything on the page changed, such as a keystroke in
           the widget editor.
         --%>
-        <WidgetView.grid
-          dashboard={@dashboard}
-          stats={@stats}
-          print_mode={@print_mode}
-          current_user={@current_user}
-          can_edit_dashboard={@can_edit_dashboard_layout}
-          is_public_access={@is_public_access}
-          public_token={@public_token}
-          grid_items={WidgetView.root_grid_items(@dashboard)}
-          text_items={WidgetView.text_items(WidgetView.grid_items(@dashboard))}
-          kpi_values={@widget_kpi_values || %{}}
-          kpi_visuals={@widget_kpi_visuals || %{}}
-          timeseries={@widget_timeseries || %{}}
-          category={@widget_category || %{}}
-          table={@widget_table || %{}}
-          text_widgets={@widget_text || %{}}
-          list={@widget_list || %{}}
-          distribution={@widget_distribution || %{}}
-          annotation_groups={@source_annotation_groups || []}
-          transponder_info={@transponder_info || %{}}
-          export_params={
-            dashboard_export_params(
-              @granularity,
-              @smart_timeframe_input,
-              @use_fixed_display,
-              @from,
-              @to,
-              @segment_values,
-              @resolved_key
-            )
-          }
-          loading={@loading}
-        />
+        <WidgetWorkspace.background
+          id="dashboard-grid-container"
+          expanded={!is_nil(@widget_workspace)}
+        >
+          <WidgetView.grid
+            dashboard={@dashboard}
+            stats={@stats}
+            print_mode={@print_mode}
+            current_user={@current_user}
+            can_edit_dashboard={@can_edit_dashboard_layout}
+            is_public_access={@is_public_access}
+            public_token={@public_token}
+            grid_items={WidgetView.root_grid_items(@dashboard)}
+            text_items={WidgetView.text_items(WidgetView.grid_items(@dashboard))}
+            kpi_values={@widget_kpi_values || %{}}
+            kpi_visuals={@widget_kpi_visuals || %{}}
+            timeseries={@widget_timeseries || %{}}
+            category={@widget_category || %{}}
+            table={@widget_table || %{}}
+            text_widgets={@widget_text || %{}}
+            list={@widget_list || %{}}
+            distribution={@widget_distribution || %{}}
+            annotation_groups={@source_annotation_groups || []}
+            transponder_info={@transponder_info || %{}}
+            export_params={
+              dashboard_export_params(
+                @granularity,
+                @smart_timeframe_input,
+                @use_fixed_display,
+                @from,
+                @to,
+                @segment_values,
+                @resolved_key
+              )
+            }
+            loading={@loading}
+          />
+        </WidgetWorkspace.background>
 
         <.app_modal
           id="dashboard-payload-modal"
@@ -1507,7 +1519,7 @@ defmodule TrifleApp.Components.DashboardPage do
           </.app_modal>
         <% end %>
         
-    <!-- Unified Widget Workspace Modal -->
+    <!-- Widget workspace -->
         <%= if @widget_workspace do %>
           <% workspace = @widget_workspace %>
           <% preview = workspace.preview || %{} %>
@@ -1521,288 +1533,46 @@ defmodule TrifleApp.Components.DashboardPage do
           <% chart_data = preview[:chart_data] %>
           <% visual_data = preview[:visual_data] %>
           <% text_data = preview[:text_data] %>
-          <.app_modal
-            id="widget-workspace-modal"
-            show={true}
-            size="full"
-            on_cancel={JS.push("request_close_widget_workspace")}
+          <WidgetWorkspace.panel
+            id="widget-workspace"
+            title={preview_title}
+            type={to_string(preview_type)}
+            close_event="request_close_widget_workspace"
+            return_focus="#dashboard-page-title"
           >
-            <:title>
-              <div class="flex min-h-[2.5rem] items-center justify-between gap-3 pr-14">
-                <div class="flex min-w-0 items-center gap-3">
-                  <span class="truncate">{preview_title}</span>
-                  <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
-                    {String.capitalize(to_string(preview_type))}
-                  </span>
-                  <span
-                    :if={workspace.dirty?}
-                    class="hidden sm:inline text-xs text-amber-600 dark:text-amber-300"
-                  >
-                    Unsaved changes
-                  </span>
-                </div>
-                <div class="shrink-0">
-                  <.button_group size="sm">
-                    <:button
-                      :if={!group_widget}
-                      phx-click="set_widget_workspace_tab"
-                      values={%{"tab" => "summary"}}
-                      selected={active_tab == "summary"}
-                      label="Summary"
-                    />
-                    <:button
-                      :if={editable}
-                      phx-click="set_widget_workspace_tab"
-                      values={%{"tab" => "edit"}}
-                      selected={active_tab == "edit"}
-                      label="Edit"
-                    />
-                  </.button_group>
-                </div>
-              </div>
-            </:title>
-            <:body>
-              <div class="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
-                <%= if group_widget do %>
-                  <div class="flex-1 min-h-0 rounded-lg border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-6 flex flex-col gap-4 overflow-auto">
-                    <div class="space-y-2">
-                      <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                        Widget Group
-                      </h4>
-                      <p class="text-sm text-slate-600 dark:text-slate-300">
-                        Groups hold related widgets in a nested grid. Drag widgets into this group on the dashboard to organize layout.
-                      </p>
-                    </div>
-                    <%= if editable do %>
-                      <.widget_workspace_edit_form
-                        draft_widget={draft_widget}
-                        widget_path_options={@widget_path_options}
-                        group_path={group_path}
-                      />
-                    <% end %>
-                  </div>
-                <% else %>
-                  <%= if preview_type == "table" do %>
-                    <% render_table = preview[:table_data] %>
-                    <% aggrid_payload =
-                      DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
-                    <div class={[
-                      "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col",
-                      if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
-                    ]}>
-                      <%= cond do %>
-                        <% is_nil(render_table) -> %>
-                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                            Configure this widget with a path to display table data.
-                          </div>
-                        <% aggrid_payload -> %>
-                          <div
-                            id={"workspace-aggrid-shell-#{workspace.widget_id}"}
-                            class="aggrid-table-shell flex-1 flex flex-col min-h-0"
-                            data-role="aggrid-table"
-                            data-theme="light"
-                            phx-hook="ExpandedAgGridTable"
-                            data-table={Jason.encode!(aggrid_payload)}
-                          >
-                            <div
-                              id={"workspace-aggrid-root-#{workspace.widget_id || "new"}"}
-                              class="flex-1 min-h-0 ag-theme-alpine"
-                              data-role="aggrid-table-root"
-                              phx-update="ignore"
-                              style="width: 100%; height: 100%;"
-                            >
-                              <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
-                                Loading AG Grid table...
-                              </div>
-                            </div>
-                          </div>
-                        <% true -> %>
-                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                            {Map.get(render_table || %{}, :empty_message, "No data available yet.")}
-                          </div>
-                      <% end %>
-                    </div>
-                  <% else %>
-                    <%= if preview_type == "list" do %>
-                      <% list_data = preview[:list_data] %>
-                      <div class={[
-                        "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4",
-                        if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
-                      ]}>
-                        <%= if list_data do %>
-                          <% items = expanded_list_items(list_data) %>
-                          <% empty_message = expanded_list_empty_message(list_data) %>
-                          <%= if items == [] do %>
-                            <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                              {empty_message}
-                            </div>
-                          <% else %>
-                            <div class="h-full w-full overflow-auto">
-                              <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
-                                <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
-                                  <%= for item <- items do %>
-                                    <% color = expanded_list_color(item) %>
-                                    <% label = expanded_list_label(item) %>
-                                    <% value = expanded_list_value(item) %>
-                                    <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
-                                    <% badge_border = expanded_list_color_with_alpha(color, "40") %>
-                                    <tr>
-                                      <td class="px-4 py-3 align-middle">
-                                        <div class="flex items-center gap-3 min-w-0">
-                                          <span
-                                            class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
-                                            style={"background-color: #{color}"}
-                                            aria-hidden="true"
-                                          >
-                                          </span>
-                                          <div class="min-w-0">
-                                            <p
-                                              class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
-                                              title={label}
-                                            >
-                                              {label}
-                                            </p>
-                                            <p
-                                              class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
-                                              title={expanded_list_path(item)}
-                                            >
-                                              {expanded_list_path(item)}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </td>
-                                      <td class="px-4 py-3 text-right align-middle">
-                                        <span
-                                          class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
-                                          style={
-                                            "color: #{color}; border-color: #{badge_border}; background-color: #{badge_bg}"
-                                          }
-                                        >
-                                          {value}
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  <% end %>
-                                </tbody>
-                              </table>
-                            </div>
-                          <% end %>
-                        <% else %>
-                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                            Configure this widget with a path to display list data.
-                          </div>
-                        <% end %>
-                      </div>
-                    <% else %>
-                      <div
-                        id={"workspace-widget-#{workspace.widget_id}"}
-                        class="w-full flex-1 min-h-0 flex flex-col gap-4"
-                        phx-hook="ExpandedWidgetView"
-                        data-tab={active_tab}
-                        data-type={preview_type}
-                        data-title={preview_title}
-                        data-colors={ChartColors.json_palette()}
-                        data-chart={if chart_data, do: Jason.encode!(chart_data)}
-                        data-visual={if visual_data, do: Jason.encode!(visual_data)}
-                        data-text={if text_data, do: Jason.encode!(text_data)}
-                      >
-                        <div class={[
-                          "min-h-0",
-                          if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
-                        ]}>
-                          <div class="h-full w-full overflow-hidden rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                            <div data-role="chart" class="h-full w-full overflow-hidden"></div>
-                          </div>
-                        </div>
-                        <div class={[
-                          "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto",
-                          if(active_tab == "edit", do: "flex-[7]", else: "flex-1")
-                        ]}>
-                          <%= if active_tab == "summary" do %>
-                            <div data-role="table-root" class="h-full w-full overflow-auto"></div>
-                          <% else %>
-                            <%= if editable do %>
-                              <div class="h-full overflow-auto p-6">
-                                <.widget_workspace_edit_form
-                                  draft_widget={draft_widget}
-                                  widget_path_options={@widget_path_options}
-                                  group_path={group_path}
-                                />
-                              </div>
-                            <% end %>
-                          <% end %>
-                        </div>
-                      </div>
-                    <% end %>
-                  <% end %>
-
-                  <%= if active_tab == "summary" and preview_type in ["table", "list"] do %>
-                    <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 px-6 py-5">
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Summary</h4>
-                      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                        Summary metrics are currently available for chart-oriented widgets. Use the preview above to validate this widget output.
-                      </p>
-                    </div>
-                  <% end %>
-
-                  <%= if active_tab == "edit" and editable and preview_type in ["table", "list"] do %>
-                    <div class="flex-[7] min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-6">
-                      <.widget_workspace_edit_form
-                        draft_widget={draft_widget}
-                        widget_path_options={@widget_path_options}
-                        group_path={group_path}
-                      />
-                    </div>
-                  <% end %>
-                <% end %>
-              </div>
-            </:body>
-            <:actions>
-              <div class="w-full flex items-center justify-between gap-3">
-                <div :if={editable && active_tab == "edit"} class="flex flex-col items-start gap-1">
-                  <span class="text-xs font-medium text-red-600 dark:text-red-400">
-                    Danger Zone
-                  </span>
-                  <.danger_button
-                    type="button"
-                    phx-click="delete_widget"
-                    phx-value-id={draft_widget["id"]}
-                    data-confirm={
-                      if group_widget,
-                        do:
-                          "Are you sure you want to delete this group? Widgets inside it will be moved back to the main dashboard.",
-                        else:
-                          "Are you sure you want to delete this widget? This action cannot be undone."
-                    }
-                    class="px-3 py-2"
-                  >
-                    {if(group_widget, do: "Delete Group", else: "Delete Widget")}
-                  </.danger_button>
-                </div>
-                <.form_actions class="ml-auto">
-                  <.secondary_button
-                    type="button"
-                    phx-click={JS.push("request_close_widget_workspace")}
-                  >
-                    Close
-                  </.secondary_button>
-                  <.primary_button
-                    :if={editable && active_tab == "edit"}
-                    form="widget-workspace-form"
-                    phx-disable-with="Saving..."
-                  >
-                    Save
-                  </.primary_button>
-                </.form_actions>
-              </div>
-            </:actions>
-            <:footer :if={workspace.show_discard_confirm?}>
-              <div class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800/70 dark:bg-amber-900/20 px-4 py-3">
+            <:status :if={workspace.dirty?}>
+              <span class="text-xs text-amber-600 dark:text-amber-300">Unsaved changes</span>
+            </:status>
+            <:controls>
+              <.button_group size="sm">
+                <:button
+                  :if={!group_widget}
+                  phx-click="set_widget_workspace_tab"
+                  values={%{"tab" => "summary"}}
+                  selected={active_tab == "summary"}
+                  label="Summary"
+                />
+                <:button
+                  :if={editable}
+                  phx-click="set_widget_workspace_tab"
+                  values={%{"tab" => "edit"}}
+                  selected={active_tab == "edit"}
+                  label="Edit"
+                />
+              </.button_group>
+            </:controls>
+            <:notice :if={workspace.show_discard_confirm?}>
+              <div
+                id="widget-discard-confirmation"
+                phx-mounted={JS.focus(to: "#keep-widget-draft")}
+                class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800/70 dark:bg-amber-900/20 px-4 py-3"
+              >
                 <p class="text-sm text-amber-900 dark:text-amber-200">
                   You have unsaved changes. Discard them and close?
                 </p>
-                <div class="mt-3 flex justify-end gap-2">
+                <div class="mt-3 flex flex-wrap justify-end gap-2">
                   <button
+                    id="keep-widget-draft"
                     type="button"
                     phx-click="cancel_close_widget_workspace"
                     class="inline-flex items-center rounded-md bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700"
@@ -1818,12 +1588,240 @@ defmodule TrifleApp.Components.DashboardPage do
                   </button>
                 </div>
               </div>
-            </:footer>
-          </.app_modal>
+            </:notice>
+            <div class="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
+              <%= if group_widget do %>
+                <div class="flex-1 min-h-0 rounded-lg border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-6 flex flex-col gap-4 overflow-auto">
+                  <div class="space-y-2">
+                    <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Widget Group
+                    </h4>
+                    <p class="text-sm text-slate-600 dark:text-slate-300">
+                      Groups hold related widgets in a nested grid. Drag widgets into this group on the dashboard to organize layout.
+                    </p>
+                  </div>
+                  <%= if editable do %>
+                    <.widget_workspace_edit_form
+                      draft_widget={draft_widget}
+                      widget_path_options={@widget_path_options}
+                      group_path={group_path}
+                    />
+                  <% end %>
+                </div>
+              <% else %>
+                <%= if preview_type == "table" do %>
+                  <% render_table = preview[:table_data] %>
+                  <% aggrid_payload =
+                    DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
+                  <div class={[
+                    "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col",
+                    if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
+                  ]}>
+                    <%= cond do %>
+                      <% is_nil(render_table) -> %>
+                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                          Configure this widget with a path to display table data.
+                        </div>
+                      <% aggrid_payload -> %>
+                        <div
+                          id={"workspace-aggrid-shell-#{workspace.widget_id}"}
+                          class="aggrid-table-shell flex-1 flex flex-col min-h-0"
+                          data-role="aggrid-table"
+                          data-theme="light"
+                          phx-hook="ExpandedAgGridTable"
+                          data-table={Jason.encode!(aggrid_payload)}
+                        >
+                          <div
+                            id={"workspace-aggrid-root-#{workspace.widget_id || "new"}"}
+                            class="flex-1 min-h-0 ag-theme-alpine"
+                            data-role="aggrid-table-root"
+                            phx-update="ignore"
+                            style="width: 100%; height: 100%;"
+                          >
+                            <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+                              Loading AG Grid table...
+                            </div>
+                          </div>
+                        </div>
+                      <% true -> %>
+                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                          {Map.get(render_table || %{}, :empty_message, "No data available yet.")}
+                        </div>
+                    <% end %>
+                  </div>
+                <% else %>
+                  <%= if preview_type == "list" do %>
+                    <% list_data = preview[:list_data] %>
+                    <div class={[
+                      "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4",
+                      if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
+                    ]}>
+                      <%= if list_data do %>
+                        <% items = expanded_list_items(list_data) %>
+                        <% empty_message = expanded_list_empty_message(list_data) %>
+                        <%= if items == [] do %>
+                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                            {empty_message}
+                          </div>
+                        <% else %>
+                          <div class="h-full w-full overflow-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                              <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
+                                <%= for item <- items do %>
+                                  <% color = expanded_list_color(item) %>
+                                  <% label = expanded_list_label(item) %>
+                                  <% value = expanded_list_value(item) %>
+                                  <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
+                                  <% badge_border = expanded_list_color_with_alpha(color, "40") %>
+                                  <tr>
+                                    <td class="px-4 py-3 align-middle">
+                                      <div class="flex items-center gap-3 min-w-0">
+                                        <span
+                                          class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                                          style={"background-color: #{color}"}
+                                          aria-hidden="true"
+                                        >
+                                        </span>
+                                        <div class="min-w-0">
+                                          <p
+                                            class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
+                                            title={label}
+                                          >
+                                            {label}
+                                          </p>
+                                          <p
+                                            class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
+                                            title={expanded_list_path(item)}
+                                          >
+                                            {expanded_list_path(item)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-right align-middle">
+                                      <span
+                                        class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
+                                        style={
+                                            "color: #{color}; border-color: #{badge_border}; background-color: #{badge_bg}"
+                                          }
+                                      >
+                                        {value}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                <% end %>
+                              </tbody>
+                            </table>
+                          </div>
+                        <% end %>
+                      <% else %>
+                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                          Configure this widget with a path to display list data.
+                        </div>
+                      <% end %>
+                    </div>
+                  <% else %>
+                    <div
+                      id={"workspace-widget-#{workspace.widget_id}"}
+                      class="w-full flex-1 min-h-0 flex flex-col gap-4"
+                      phx-hook="ExpandedWidgetView"
+                      data-tab={active_tab}
+                      data-type={preview_type}
+                      data-title={preview_title}
+                      data-colors={ChartColors.json_palette()}
+                      data-chart={if chart_data, do: Jason.encode!(chart_data)}
+                      data-visual={if visual_data, do: Jason.encode!(visual_data)}
+                      data-text={if text_data, do: Jason.encode!(text_data)}
+                    >
+                      <div class={[
+                        "min-h-0",
+                        if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
+                      ]}>
+                        <div class="h-full w-full overflow-hidden rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                          <div data-role="chart" class="h-full w-full overflow-hidden"></div>
+                        </div>
+                      </div>
+                      <div class={[
+                        "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto",
+                        if(active_tab == "edit", do: "flex-[7]", else: "flex-1")
+                      ]}>
+                        <%= if active_tab == "summary" do %>
+                          <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                        <% else %>
+                          <%= if editable do %>
+                            <div class="h-full overflow-auto p-6">
+                              <.widget_workspace_edit_form
+                                draft_widget={draft_widget}
+                                widget_path_options={@widget_path_options}
+                                group_path={group_path}
+                              />
+                            </div>
+                          <% end %>
+                        <% end %>
+                      </div>
+                    </div>
+                  <% end %>
+                <% end %>
+
+                <%= if active_tab == "summary" and preview_type in ["table", "list"] do %>
+                  <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 px-6 py-5">
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Summary</h4>
+                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                      Summary metrics are currently available for chart-oriented widgets. Use the preview above to validate this widget output.
+                    </p>
+                  </div>
+                <% end %>
+
+                <%= if active_tab == "edit" and editable and preview_type in ["table", "list"] do %>
+                  <div class="flex-[7] min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-6">
+                    <.widget_workspace_edit_form
+                      draft_widget={draft_widget}
+                      widget_path_options={@widget_path_options}
+                      group_path={group_path}
+                    />
+                  </div>
+                <% end %>
+              <% end %>
+            </div>
+            <:actions>
+              <div :if={editable && active_tab == "edit"} class="flex flex-col items-start gap-1">
+                <span class="text-xs font-medium text-red-600 dark:text-red-400">
+                  Danger Zone
+                </span>
+                <.danger_button
+                  type="button"
+                  phx-click="delete_widget"
+                  phx-value-id={draft_widget["id"]}
+                  data-confirm={
+                    if group_widget,
+                      do:
+                        "Are you sure you want to delete this group? Widgets inside it will be moved back to the main dashboard.",
+                      else:
+                        "Are you sure you want to delete this widget? This action cannot be undone."
+                  }
+                  class="px-3 py-2"
+                >
+                  {if(group_widget, do: "Delete Group", else: "Delete Widget")}
+                </.danger_button>
+              </div>
+              <.form_actions class="ml-auto">
+                <.secondary_button type="button" phx-click={JS.push("request_close_widget_workspace")}>
+                  Close
+                </.secondary_button>
+                <.primary_button
+                  :if={editable && active_tab == "edit"}
+                  form="widget-workspace-form"
+                  phx-disable-with="Saving..."
+                >
+                  Save
+                </.primary_button>
+              </.form_actions>
+            </:actions>
+          </WidgetWorkspace.panel>
         <% end %>
         
     <!-- Dashboard Content -->
-        <div class="flex-1 relative">
+        <div :if={is_nil(@widget_workspace)} class="flex-1 relative">
           <%= if WidgetView.root_grid_items(@dashboard) == [] do %>
             <!-- Empty state in white panel -->
             <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
@@ -1906,7 +1904,6 @@ defmodule TrifleApp.Components.DashboardPage do
       <%= if !@is_public_access do %>
         <%= if summary = get_summary_stats(assigns) do %>
           <.dashboard_footer
-            class="mt-auto"
             summary={summary}
             source={@source}
             load_duration_microseconds={@load_duration_microseconds}

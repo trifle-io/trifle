@@ -215,7 +215,7 @@ defmodule TrifleApp.Components.FilterBar do
           </div>
           
     <!-- Controls and Granularity Section -->
-          <div class="flex shrink-0 items-center gap-4 md:w-full md:justify-end lg:w-auto lg:ml-auto">
+          <div class="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 md:w-full md:flex-nowrap md:justify-end lg:w-auto lg:ml-auto">
             <!-- Controls Section -->
             <%= if @show_controls do %>
               <div id="controls-container">
@@ -362,7 +362,7 @@ defmodule TrifleApp.Components.FilterBar do
                   phx-target={@myself}
                   phx-click="toggle_granularity_dropdown"
                   data-filter-bar-action="granularity"
-                  class="filter-bar-pressable relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus-visible:border-teal-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500 dark:hover:bg-slate-700"
+                  class="filter-bar-pressable relative h-10 w-32 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus-visible:border-teal-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500 dark:hover:bg-slate-700 sm:w-40"
                 >
                   <div class="flex items-center justify-between">
                     <span>{Granularity.display_name(@granularity)}</span>
@@ -391,7 +391,7 @@ defmodule TrifleApp.Components.FilterBar do
                   <div
                     phx-click-away="hide_granularity_dropdown"
                     phx-target={@myself}
-                    class="absolute z-50 mt-1 w-40 max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black/5 focus-visible:outline-none sm:text-sm"
+                    class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black/5 focus-visible:outline-none sm:text-sm"
                   >
                     <%= for granularity <- @available_granularities do %>
                       <button

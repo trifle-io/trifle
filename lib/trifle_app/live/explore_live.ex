@@ -13,6 +13,7 @@ defmodule TrifleApp.ExploreLive do
   alias TrifleApp.Components.DashboardWidgets.WidgetView
 
   alias TrifleApp.Components.DashboardWidgets.ExpandedChart
+  alias TrifleApp.Components.WidgetWorkspace
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.ExploreCore
 
@@ -87,7 +88,7 @@ defmodule TrifleApp.ExploreLive do
     <%= if @no_source do %>
       <div
         id="explore-root"
-        class="flex flex-col dark:bg-slate-900 min-h-screen relative"
+        class="relative flex min-h-[100dvh] flex-col dark:bg-slate-900"
         phx-hook="FileDownload"
       >
         <div class="max-w-3xl mx-auto mt-16">
@@ -112,7 +113,7 @@ defmodule TrifleApp.ExploreLive do
     <% else %>
       <div
         id="explore-root"
-        class="flex flex-col dark:bg-slate-900 min-h-screen relative"
+        class="relative flex min-h-[100dvh] flex-col dark:bg-slate-900"
         phx-hook="FileDownload"
       >
         <iframe
@@ -180,7 +181,11 @@ defmodule TrifleApp.ExploreLive do
           transponding={@transponding}
         />
 
-        <div class="mt-6">
+        <WidgetWorkspace.background
+          id="explore-widgets"
+          expanded={!is_nil(@expanded_widget)}
+          class="mt-6"
+        >
           <WidgetView.grid
             dashboard={@dashboard_config}
             stats={nil}
@@ -201,150 +206,101 @@ defmodule TrifleApp.ExploreLive do
             widget_export={@widget_export_config}
             transponder_info={@transponder_info}
           />
-        </div>
+        </WidgetWorkspace.background>
 
         <%= if @expanded_widget do %>
-          <.app_modal
+          <WidgetWorkspace.panel
             id="explore-expanded-widget"
-            show={true}
-            size="full"
-            on_cancel={JS.push("close_expanded_widget")}
+            title={@expanded_widget.title}
+            type={@expanded_widget.type}
           >
-            <:title>
-              <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                <div class="flex items-center gap-3">
-                  <span>{@expanded_widget.title}</span>
-                  <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
-                    {String.capitalize(@expanded_widget.type || "widget")}
-                  </span>
-                </div>
-              </div>
-            </:title>
-            <:body>
-              <%= case @expanded_widget.type do %>
-                <% "table" -> %>
-                  <% render_table =
-                    Map.get(@table_map || %{}, @expanded_widget.widget_id) %>
-                  <% aggrid_payload =
-                    DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
-                  <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
-                    <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                      <%= if render_table do %>
-                        <%= if aggrid_payload do %>
-                          <div
-                            id={"expanded-aggrid-shell-#{@expanded_widget.widget_id}"}
-                            class="aggrid-table-shell flex-1 flex flex-col min-h-0"
-                            data-role="aggrid-table"
-                            data-theme="light"
-                            phx-hook="ExpandedAgGridTable"
-                            data-table={Jason.encode!(aggrid_payload)}
-                          >
-                            <div
-                              id={"expanded-aggrid-root-#{@expanded_widget.widget_id || "new"}"}
-                              class="flex-1 min-h-0 ag-theme-alpine"
-                              data-role="aggrid-table-root"
-                              phx-update="ignore"
-                              style="width: 100%; min-height: 400px;"
-                            >
-                              <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
-                                Loading AG Grid table...
-                              </div>
-                            </div>
-                          </div>
-                        <% else %>
-                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                            {Map.get(render_table, :empty_message, "No data available yet.")}
-                          </div>
-                        <% end %>
-                      <% else %>
-                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                          Configure this widget with a path to display table data.
-                        </div>
-                      <% end %>
-                    </div>
-                  </div>
-                <% "list" -> %>
-                  <% list_data = Map.get(@list_map || %{}, @expanded_widget.widget_id) %>
-                  <% list_items = expanded_list_items(list_data) %>
-                  <% empty_message = expanded_list_empty_message(list_data) %>
-                  <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
-                    <div class="flex-1 min-h-[400px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                      <%= if list_items == [] do %>
-                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                          {empty_message}
-                        </div>
-                      <% else %>
-                        <div class="h-full w-full overflow-auto">
-                          <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
-                            <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
-                              <%= for item <- list_items do %>
-                                <% color = expanded_list_color(item) %>
-                                <% label = expanded_list_label(item) %>
-                                <% value = expanded_list_value(item) %>
-                                <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
-                                <% badge_border = expanded_list_color_with_alpha(color, "40") %>
-                                <tr>
-                                  <td class="px-4 py-3 align-middle">
-                                    <div class="flex items-center gap-3 min-w-0">
-                                      <span
-                                        class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
-                                        style={"background-color: #{color}"}
-                                        aria-hidden="true"
-                                      >
-                                      </span>
-                                      <div class="min-w-0">
-                                        <p
-                                          class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
-                                          title={label}
-                                        >
-                                          {label}
-                                        </p>
-                                        <%= if path = expanded_list_path(item) do %>
-                                          <p
-                                            class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
-                                            title={path}
-                                          >
-                                            {path}
-                                          </p>
-                                        <% end %>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td class="px-4 py-3 text-right align-middle">
+            <%= case @expanded_widget.type do %>
+              <% "table" -> %>
+                <DataTable.expanded
+                  id={@expanded_widget.widget_id}
+                  dataset={Map.get(@table_map || %{}, @expanded_widget.widget_id)}
+                  transponder_info={@transponder_info || %{}}
+                />
+              <% "list" -> %>
+                <% list_data = Map.get(@list_map || %{}, @expanded_widget.widget_id) %>
+                <% list_items = expanded_list_items(list_data) %>
+                <% empty_message = expanded_list_empty_message(list_data) %>
+                <div class="flex h-full min-h-0 flex-col">
+                  <div class="min-h-0 flex-1 rounded-lg border border-gray-200/80 bg-white p-4 dark:border-slate-700/60 dark:bg-slate-900/40">
+                    <%= if list_items == [] do %>
+                      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                        {empty_message}
+                      </div>
+                    <% else %>
+                      <div class="h-full w-full overflow-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                          <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
+                            <%= for item <- list_items do %>
+                              <% color = expanded_list_color(item) %>
+                              <% label = expanded_list_label(item) %>
+                              <% value = expanded_list_value(item) %>
+                              <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
+                              <% badge_border = expanded_list_color_with_alpha(color, "40") %>
+                              <tr>
+                                <td class="px-4 py-3 align-middle">
+                                  <div class="flex items-center gap-3 min-w-0">
                                     <span
-                                      class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
-                                      style={
+                                      class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                                      style={"background-color: #{color}"}
+                                      aria-hidden="true"
+                                    >
+                                    </span>
+                                    <div class="min-w-0">
+                                      <p
+                                        class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
+                                        title={label}
+                                      >
+                                        {label}
+                                      </p>
+                                      <%= if path = expanded_list_path(item) do %>
+                                        <p
+                                          class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
+                                          title={path}
+                                        >
+                                          {path}
+                                        </p>
+                                      <% end %>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td class="px-4 py-3 text-right align-middle">
+                                  <span
+                                    class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
+                                    style={
                                         "border-color: #{badge_border}; background-color: #{badge_bg}; color: #{color}"
                                       }
-                                    >
-                                      {value}
-                                    </span>
-                                  </td>
-                                </tr>
-                              <% end %>
-                            </tbody>
-                          </table>
-                        </div>
-                      <% end %>
-                    </div>
+                                  >
+                                    {value}
+                                  </span>
+                                </td>
+                              </tr>
+                            <% end %>
+                          </tbody>
+                        </table>
+                      </div>
+                    <% end %>
                   </div>
-                <% _ -> %>
-                  <% chart_payload =
-                    Map.get(@timeseries_map || %{}, @expanded_widget.widget_id) %>
-                  <ExpandedChart.content
-                    id={"expanded-widget-#{@expanded_widget.widget_id}"}
-                    type={@expanded_widget.type}
-                    title={@expanded_widget.title}
-                    chart={chart_payload}
-                  />
-              <% end %>
-            </:body>
-          </.app_modal>
+                </div>
+              <% _ -> %>
+                <% chart_payload =
+                  Map.get(@timeseries_map || %{}, @expanded_widget.widget_id) %>
+                <ExpandedChart.content
+                  id={"expanded-widget-#{@expanded_widget.widget_id}"}
+                  type={@expanded_widget.type}
+                  title={@expanded_widget.title}
+                  chart={chart_payload}
+                />
+            <% end %>
+          </WidgetWorkspace.panel>
         <% end %>
 
         <%= if @summary do %>
           <.dashboard_footer
-            class="mt-8"
             summary={@summary}
             load_duration_microseconds={@load_duration_microseconds}
             show_export_dropdown={@show_export_dropdown}
