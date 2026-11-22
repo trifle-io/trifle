@@ -396,13 +396,13 @@ defmodule TrifleApp.Layouts do
         toggle_chat: true,
         shortcut_hint: true
       },
+      %{menu: :traces, label: "Traces", to: ~p"/traces", icon: "sidebar-traces"},
       %{menu: :dashboards, label: "Dashboards", to: ~p"/dashboards", icon: "sidebar-dashboards"},
       %{menu: :monitors, label: "Monitors", to: ~p"/monitors", icon: "sidebar-monitors"},
       %{menu: :explore, label: "Explore", to: ~p"/explore", icon: "sidebar-explore"},
-      %{menu: :traces, label: "Traces", to: ~p"/traces", icon: "sidebar-traces"},
+      %{menu: :databases, label: "Databases", to: ~p"/dbs", icon: "sidebar-databases"},
       Trifle.Config.projects_enabled?() &&
-        %{menu: :projects, label: "Projects", to: ~p"/projects", icon: "sidebar-projects"},
-      %{menu: :databases, label: "Databases", to: ~p"/dbs", icon: "sidebar-databases"}
+        %{menu: :projects, label: "Projects", to: ~p"/projects", icon: "sidebar-projects"}
     ]
     |> Enum.filter(& &1)
   end
