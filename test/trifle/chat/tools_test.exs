@@ -130,6 +130,7 @@ defmodule Trifle.Chat.ToolsTest do
         Enum.find(definitions, &(get_in(&1, ["function", "name"]) == "inspect_metric_schema"))
 
       assert "inspect_metric_schema" in tool_names
+      assert Enum.all?(~w(list_trace_sources search_traces read_trace), &(&1 in tool_names))
       assert get_in(list_available_metrics, ["function", "parameters", "properties"]) == %{}
 
       assert get_in(inspect_metric_schema, ["function", "parameters", "required"]) == [

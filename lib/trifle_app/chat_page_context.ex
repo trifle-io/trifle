@@ -71,22 +71,23 @@ defmodule TrifleApp.ChatPageContext do
     timeframe = Map.get(query, :timeframe, Map.get(query, "timeframe", %{}))
     entity = Map.get(context, :entity, Map.get(context, "entity", %{}))
 
-    payload =
-      [
-        Map.get(context, :page_type, Map.get(context, "page_type")),
-        Map.get(entity, :id, Map.get(entity, "id")),
-        Map.get(source, :type, Map.get(source, "type")),
-        Map.get(source, :id, Map.get(source, "id")),
-        Map.get(timeframe, :value, Map.get(timeframe, "value")),
-        Map.get(timeframe, :from, Map.get(timeframe, "from")),
-        Map.get(timeframe, :to, Map.get(timeframe, "to")),
-        Map.get(query, :granularity, Map.get(query, "granularity")),
-        Map.get(query, :metrics_key, Map.get(query, "metrics_key"))
-      ]
-      |> Jason.encode!()
+    fields = [
+      Map.get(context, :page_type, Map.get(context, "page_type")),
+      Map.get(entity, :id, Map.get(entity, "id")),
+      Map.get(source, :type, Map.get(source, "type")),
+      Map.get(source, :id, Map.get(source, "id")),
+      Map.get(timeframe, :value, Map.get(timeframe, "value")),
+      Map.get(timeframe, :from, Map.get(timeframe, "from")),
+      Map.get(timeframe, :to, Map.get(timeframe, "to")),
+      Map.get(query, :granularity, Map.get(query, "granularity")),
+      Map.get(query, :metrics_key, Map.get(query, "metrics_key"))
+    ]
+
+    trace_filters = Map.get(query, :trace_filters, Map.get(query, "trace_filters"))
+    fields = if is_map(trace_filters), do: fields ++ [trace_filters], else: fields
 
     :sha256
-    |> :crypto.hash(payload)
+    |> :crypto.hash(Jason.encode!(fields))
     |> Base.encode16(case: :lower)
   end
 
@@ -115,14 +116,17 @@ defmodule TrifleApp.ChatPageContext do
   @spec system_message(context()) :: String.t()
   def system_message(%{} = context) do
     fingerprint = fingerprint(context)
+    page_type = Map.get(context, :page_type, Map.get(context, "page_type"))
+    entity_id = map_value(context, [:entity, :id])
     query = Map.get(context, :query, Map.get(context, "query", %{}))
     source = Map.get(query, :source_ref, Map.get(query, "source_ref", %{}))
     timeframe = Map.get(query, :timeframe, Map.get(query, "timeframe", %{}))
+    trace_filters = Map.get(query, :trace_filters, Map.get(query, "trace_filters"))
 
     [
       "[page_context fingerprint=#{fingerprint}]",
-      "page_type=#{Map.get(context, :page_type, Map.get(context, "page_type"))}",
-      "entity_id=#{map_value(context, [:entity, :id]) || ""}",
+      "page_type=#{page_type}",
+      "entity_id=#{encode_entity_id(page_type, entity_id)}",
       "entity_title=#{map_value(context, [:entity, :title]) || ""}",
       "source=#{Map.get(source, :display_name, Map.get(source, "display_name")) || ""}",
       "source_ref=#{source_ref_label(source)}",
@@ -132,8 +136,10 @@ defmodule TrifleApp.ChatPageContext do
       "timeframe_display=#{Map.get(timeframe, :display, Map.get(timeframe, "display")) || ""}",
       "granularity=#{Map.get(query, :granularity, Map.get(query, "granularity")) || ""}",
       "metrics_key=#{Map.get(query, :metrics_key, Map.get(query, "metrics_key")) || ""}",
+      trace_filters && "trace_filters=#{Jason.encode!(trace_filters)}",
       "summary=#{Map.get(context, :summary, Map.get(context, "summary")) || ""}"
     ]
+    |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")
   end
 
@@ -177,7 +183,7 @@ defmodule TrifleApp.ChatPageContext do
          page_type when not is_nil(page_type) <- parse_page_type(fields["page_type"]) do
       build(page_type,
         entity: %{
-          id: blank_to_nil(fields["entity_id"]),
+          id: decode_entity_id(page_type, fields["entity_id"]),
           title: blank_to_nil(fields["entity_title"])
         },
         query: %{
@@ -189,7 +195,8 @@ defmodule TrifleApp.ChatPageContext do
             display: blank_to_nil(fields["timeframe_display"])
           },
           granularity: blank_to_nil(fields["granularity"]),
-          metrics_key: blank_to_nil(fields["metrics_key"])
+          metrics_key: blank_to_nil(fields["metrics_key"]),
+          trace_filters: parse_trace_filters(fields["trace_filters"])
         },
         summary: blank_to_nil(fields["summary"])
       )
@@ -276,6 +283,7 @@ defmodule TrifleApp.ChatPageContext do
       "dashboard" -> :dashboard
       "monitor" -> :monitor
       "explore" -> :explore
+      "traces" -> :traces
       "dashboards" -> :dashboards
       "monitors" -> :monitors
       "projects" -> :projects
@@ -285,6 +293,29 @@ defmodule TrifleApp.ChatPageContext do
   end
 
   defp parse_page_type(_), do: nil
+
+  defp encode_entity_id(type, reference) when type in [:traces, "traces"],
+    do: Jason.encode!(reference)
+
+  defp encode_entity_id(_type, id), do: id || ""
+
+  defp decode_entity_id(:traces, reference) when is_binary(reference) do
+    case Jason.decode(reference) do
+      {:ok, id} when is_binary(id) -> id
+      _ -> nil
+    end
+  end
+
+  defp decode_entity_id(_type, id), do: blank_to_nil(id)
+
+  defp parse_trace_filters(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, %{} = filters} -> filters
+      _ -> nil
+    end
+  end
+
+  defp parse_trace_filters(_), do: nil
 
   defp parse_source_ref_label(label, display_name) when is_binary(label) do
     case String.split(label, ":", parts: 2) do

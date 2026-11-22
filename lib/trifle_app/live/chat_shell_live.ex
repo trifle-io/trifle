@@ -1790,6 +1790,7 @@ defmodule TrifleApp.ChatShellLive do
       type when type in [:dashboard, :dashboards] -> "sidebar-dashboards"
       type when type in [:monitor, :monitors] -> "sidebar-monitors"
       :explore -> "sidebar-explore"
+      :traces -> "sidebar-traces"
       type when type in [:project, :projects] -> "sidebar-projects"
       type when type in [:database, :databases] -> "sidebar-databases"
       _ -> "chef-hat-alt-2"
@@ -1867,6 +1868,7 @@ defmodule TrifleApp.ChatShellLive do
           "monitor" -> :monitor
           "monitors" -> :monitors
           "explore" -> :explore
+          "traces" -> :traces
           "project" -> :project
           "projects" -> :projects
           "database" -> :database

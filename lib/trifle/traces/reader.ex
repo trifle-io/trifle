@@ -29,7 +29,10 @@ defmodule Trifle.Traces.Reader do
 
   def search(membership, id, filters, opts \\ []) do
     read(membership, id, :search, opts, fn config ->
-      filters |> Keyword.put(:limit, 20) |> Keyword.put(:config, config) |> Trifle.Traces.search()
+      filters
+      |> Keyword.put_new(:limit, 20)
+      |> Keyword.put(:config, config)
+      |> Trifle.Traces.search()
     end)
   end
 
@@ -42,6 +45,21 @@ defmodule Trifle.Traces.Reader do
       record = find!(config, reference)
       entries = read_part!(config, record, part)
       Enum.with_index(entries, fn entry, row -> %{entry: entry, part: part, row: row} end)
+    end)
+  end
+
+  def contents(membership, id, reference, part, opts \\ []) do
+    read(membership, id, :contents, opts, fn config ->
+      record = find!(config, reference)
+
+      entries =
+        case {part, record.parts} do
+          {nil, _} -> []
+          {1, 0} -> []
+          _ -> read_part!(config, record, part)
+        end
+
+      %{record: record, entries: entries}
     end)
   end
 
@@ -103,9 +121,13 @@ defmodule Trifle.Traces.Reader do
 
   def field(map, key), do: Map.get(map, key, Map.get(map, Atom.to_string(key)))
 
-  def preview(%{name: name, body: body}) do
-    if String.ends_with?(String.downcase(name), [".txt", ".log", ".json", ".csv"]) and
-         String.valid?(body) do
+  def text_artifact?(%{name: name, body: body}) do
+    String.ends_with?(String.downcase(name), [".txt", ".log", ".json", ".csv"]) and
+      String.valid?(body)
+  end
+
+  def preview(%{body: body} = artifact) do
+    if text_artifact?(artifact) do
       # Slice by characters so a multibyte character is never cut in half.
       %{text: String.slice(body, 0, 32_768), truncated: String.length(body) > 32_768}
     else

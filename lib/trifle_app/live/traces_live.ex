@@ -1,9 +1,12 @@
 defmodule TrifleApp.TracesLive do
   use TrifleApp, :live_view
 
+  on_mount({TrifleApp.Live.PageShell, :default})
+
   alias Trifle.Accounts
   alias Trifle.Stats.Source
   alias Trifle.Traces.{Activity, Overview, Reader}
+  alias TrifleApp.{ChatBus, ChatPageContext}
   alias TrifleApp.TracesLive.{Query, Timestamps}
   alias TrifleApp.Components.Traces, as: View
   alias TrifleApp.Components.{TraceOverview, WidgetWorkspace}
@@ -19,7 +22,9 @@ defmodule TrifleApp.TracesLive do
     connect_params = if connected?(socket), do: get_connect_params(socket) || %{}, else: %{}
 
     {:ok,
-     assign(socket,
+     socket
+     |> ChatBus.maybe_subscribe_page_channel()
+     |> assign(
        page_title: "Traces",
        sources: Reader.sources(socket.assigns.current_membership),
        source: nil,
@@ -135,12 +140,13 @@ defmodule TrifleApp.TracesLive do
 
       socket = if list_changed, do: load_list(socket, false), else: socket
       socket = if detail_changed, do: load_detail(socket), else: socket
-      {:noreply, socket}
+      {:noreply, publish_chat_page_context(socket)}
     else
       {:error, error} ->
         # Invalidate all pending reads, including when an invalid source is supplied.
         {:noreply,
-         assign(socket,
+         socket
+         |> assign(
            params: params,
            query_error: error,
            tokens: %{},
@@ -152,7 +158,8 @@ defmodule TrifleApp.TracesLive do
            activity_loading: false,
            list_loading: false,
            detail_loading: false
-         )}
+         )
+         |> publish_chat_page_context()}
     end
   end
 
@@ -715,6 +722,28 @@ defmodule TrifleApp.TracesLive do
     do:
       {socket.assigns.current_membership, Source.id(socket.assigns.source),
        Application.get_env(:trifle, :trace_reader, Reader)}
+
+  defp publish_chat_page_context(socket) do
+    ChatBus.publish_page_context(socket, chat_page_context(socket))
+  end
+
+  @doc false
+  def chat_page_context(socket) do
+    query = socket.assigns.query || %{}
+
+    ChatPageContext.build(:traces,
+      entity: %{id: query[:reference], title: "Traces", route: ~p"/traces"},
+      query: %{
+        source_ref: ChatPageContext.source_ref(socket.assigns.source),
+        timeframe:
+          ChatPageContext.timeframe(query[:timeframe], query[:from], query[:to], query[:fixed]),
+        trace_filters:
+          (query[:params] || %{})
+          |> Map.take(~w(path tags tag_mode state duration_min))
+          |> Map.reject(fn {_key, value} -> String.trim(value) == "" end)
+      }
+    )
+  end
 
   defp patch(socket, params) do
     changed =

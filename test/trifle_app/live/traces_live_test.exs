@@ -6,6 +6,7 @@ defmodule TrifleApp.TracesLiveTest do
   alias Trifle.Organizations
   alias Trifle.Accounts
   alias Trifle.Traces.TraceRecord
+  alias TrifleApp.ChatPageContext
 
   defmodule FakeReader do
     def search(_, _, filters) do
@@ -292,6 +293,33 @@ defmodule TrifleApp.TracesLiveTest do
       })
 
     %{conn: log_in_user(conn, user), user: user, database: database, organization: org}
+  end
+
+  test "Baker can detect the trace source, active filters, and open reference", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _html} =
+      live(conn, ~p"/traces?source_id=#{database.id}&reference=first&path=jobs&tags=scheduled")
+
+    send(view.pid, {:chat_context_request, "trace-context", self(), "/traces"})
+    source_id = database.id
+
+    assert_receive {:chat_context_response, "trace-context",
+                    %{
+                      page_type: :traces,
+                      entity: %{"id" => "first"},
+                      query: %{
+                        "source_ref" => %{"id" => ^source_id},
+                        "trace_filters" => %{"path" => "jobs", "tags" => "scheduled"}
+                      }
+                    } = context}
+
+    restored =
+      context |> ChatPageContext.system_message() |> ChatPageContext.parse_system_message()
+
+    assert ChatPageContext.fingerprint(restored) == ChatPageContext.fingerprint(context)
+    assert Trifle.Chat.Tools.system_prompt(%{page_context: restored}) =~ "Open trace reference"
   end
 
   test "legacy trace URLs redirect to clean parameters and preserve filters and selection", %{

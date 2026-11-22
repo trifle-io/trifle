@@ -3,6 +3,7 @@ defmodule Trifle.Traces.ReaderTest do
   import Trifle.OrganizationsFixtures
   import Trifle.BillingFixtures
   import ExUnit.CaptureLog
+  alias Trifle.Chat.Tools
   alias Trifle.Organizations
   alias Trifle.Traces.{Reader, Configuration, TraceRecord}
   alias Trifle.Traces.Driver.Index.Postgres
@@ -13,6 +14,17 @@ defmodule Trifle.Traces.ReaderTest do
       send(self(), {:s3_read, bucket, key})
       Map.fetch!(objects, {bucket, key})
     end
+  end
+
+  defmodule BakerReader do
+    def search(membership, id, filters),
+      do: Reader.search(membership, id, filters, Process.get(__MODULE__))
+
+    def contents(membership, id, reference, part),
+      do: Reader.contents(membership, id, reference, part, Process.get(__MODULE__))
+
+    def artifact(membership, id, reference, part, row),
+      do: Reader.artifact(membership, id, reference, part, row, Process.get(__MODULE__))
   end
 
   setup do
@@ -114,6 +126,151 @@ defmodule Trifle.Traces.ReaderTest do
     assert length(second) == 3
     assert length(Enum.uniq_by(first ++ second, & &1.reference)) == 23
   end
+
+  describe "Baker trace tools" do
+    setup %{opts: opts} do
+      previous = Application.fetch_env(:trifle, :trace_reader)
+      Process.put(BakerReader, opts)
+      Application.put_env(:trifle, :trace_reader, BakerReader)
+
+      on_exit(fn ->
+        case previous do
+          {:ok, reader} -> Application.put_env(:trifle, :trace_reader, reader)
+          :error -> Application.delete_env(:trifle, :trace_reader)
+        end
+      end)
+    end
+
+    test "finds the latest five calculations by tag and path and reads each matching trace",
+         ctx do
+      source_id = ctx.database.id
+
+      for n <- 1..7 do
+        record = %{
+          ctx.record
+          | reference: "calculation-#{n}",
+            key: "jobs/calculation/worker",
+            first_at: DateTime.add(ctx.record.first_at, n, :second),
+            tags: ["customer:42"],
+            meta: [n],
+            context: %{"worker" => "Calculation"},
+            parts: 1,
+            length: 1
+        }
+
+        Postgres.create(ctx.config.index_driver, record)
+
+        Memory.write_part(ctx.config.data_driver, record, 1, [
+          %{type: :raw, state: :success, level: 1, message: "Result #{n}"}
+        ])
+      end
+
+      Postgres.create(ctx.config.index_driver, %{
+        ctx.record
+        | reference: "other-customer",
+          key: "jobs/calculation",
+          first_at: DateTime.add(ctx.record.first_at, 10, :second)
+      })
+
+      assert {:ok, %{sources: [%{id: ^source_id}], default_source_id: ^source_id}} =
+               baker_tool("list_trace_sources", %{}, ctx)
+
+      filters = %{path: "jobs/calculation", tags: ["customer:42"], limit: 5}
+
+      assert {:ok, %{source_id: ^source_id, traces: traces, next_cursor: cursor}} =
+               baker_tool("search_traces", filters, ctx)
+
+      assert Enum.map(traces, & &1.reference) == Enum.map(7..3//-1, &"calculation-#{&1}")
+
+      for {trace, n} <- Enum.zip(traces, 7..3//-1) do
+        reference = trace.reference
+        message = "Result #{n}"
+
+        assert {:ok,
+                %{
+                  trace: %{reference: ^reference, url: "/traces?" <> _},
+                  metadata: %{meta: [^n], context: %{"worker" => "Calculation"}},
+                  entries: [%{type: :raw, level: 1, message: ^message}],
+                  next: nil
+                } = result} =
+                 baker_tool("read_trace", %{source_id: source_id, reference: reference}, ctx)
+
+        assert %{"entries" => [%{"message" => ^message}], "metadata" => %{"meta" => [^n]}} =
+                 Tools.compact_tool_payload_for_model("read_trace", Jason.encode!(result))
+      end
+
+      assert {:ok, %{traces: [%{reference: "calculation-2"}, %{reference: "calculation-1"}]}} =
+               baker_tool("search_traces", Map.put(filters, :cursor, cursor), ctx)
+
+      assert {:ok, %{traces: [%{reference: "other-customer"}]}} =
+               baker_tool("search_traces", %{path: "jobs/calculation", limit: 1}, ctx)
+    end
+
+    test "continues through long messages, metadata, stored parts, and text attachments", ctx do
+      long_text = String.duplicate("東", 3001)
+      record = %{ctx.record | reference: "long-trace", meta: %{"value" => long_text}}
+      Postgres.create(ctx.config.index_driver, record)
+
+      Memory.write_part(ctx.config.data_driver, record, 1, [
+        %{type: :raw, message: long_text},
+        %{type: :media, message: "result.txt", size: byte_size(long_text)}
+      ])
+
+      Memory.write_part(ctx.config.data_driver, record, 2, [%{type: :text, message: "Complete"}])
+      Memory.write_artifact(ctx.config.data_driver, record, "result.txt", payload: long_text)
+
+      assert {:ok, page} = baker_tool("read_trace", %{reference: record.reference}, ctx)
+      assert [%{message: first, message_continues: true}] = page.entries
+      assert String.valid?(first)
+      refute Map.has_key?(page, :metadata)
+
+      assert {:ok, second} = baker_tool("read_trace", page.next, ctx)
+
+      assert [%{message: rest, message_continues: false}, %{type: :media, row: 1}] =
+               second.entries
+
+      assert first <> rest == long_text
+
+      assert {:ok, %{part: 2, entries: [%{message: "Complete"}], next: nil}} =
+               baker_tool("read_trace", second.next, ctx)
+
+      assert {:ok, %{metadata_json_fragment: metadata_rest, next: nil}} =
+               baker_tool("read_trace", page.next_metadata, ctx)
+
+      assert Jason.decode!(page.metadata_json_fragment <> metadata_rest)["meta"]["value"] ==
+               long_text
+
+      assert {:ok, attachment} =
+               baker_tool(
+                 "read_trace",
+                 %{reference: record.reference, section: "attachment", part: 1, row: 1},
+                 ctx
+               )
+
+      assert {:ok, %{text: attachment_rest, next: nil}} =
+               baker_tool("read_trace", attachment.next, ctx)
+
+      assert attachment.text <> attachment_rest == long_text
+    end
+
+    test "applies workspace access checks to search, metadata, and payload reads", ctx do
+      source = %{source_id: ctx.database.id, reference: ctx.record.reference}
+      foreign = put_in(ctx.membership.organization_id, Ecto.UUID.generate())
+
+      for {tool, args} <- [
+            {"search_traces", Map.take(source, [:source_id])},
+            {"read_trace", source},
+            {"read_trace", Map.put(source, :section, "metadata")},
+            {"read_trace", Map.merge(source, %{section: "attachment", part: 1, row: 1})}
+          ] do
+        assert {:error, %{error: "This trace source is unavailable."}} =
+                 baker_tool(tool, args, foreign)
+      end
+    end
+  end
+
+  defp baker_tool(tool, args, ctx),
+    do: Tools.execute(tool, Jason.encode!(args), %{membership: ctx.membership})
 
   test "Postgres and the trace reader preserve argument arrays and maps directly in meta", ctx do
     for arguments <- [
