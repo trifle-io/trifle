@@ -7,7 +7,10 @@ defmodule TrifleApp.Components.DashboardFooter do
   """
   use TrifleApp, :html
 
+  alias Trifle.Stats.Source
+
   attr :summary, :map, required: true
+  attr :source, Source, default: nil
   attr :load_duration_microseconds, :integer, default: nil
   attr :show_export_dropdown, :boolean, default: false
   attr :dashboard, :map, required: true
@@ -97,7 +100,18 @@ defmodule TrifleApp.Components.DashboardFooter do
                 />
               </svg>
               <span class="font-medium">Key:</span>
-              <span class="truncate max-w-32" title={summary.key}>{summary.key}</span>
+              <%= if path = explore_key_path(@source, summary.key) do %>
+                <.link
+                  navigate={path}
+                  data-role="explore-metric-key"
+                  class="max-w-32 truncate text-teal-700 underline underline-offset-2 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-100"
+                  title={"Explore #{summary.key}"}
+                >
+                  {summary.key}
+                </.link>
+              <% else %>
+                <span class="truncate max-w-32" title={summary.key}>{summary.key}</span>
+              <% end %>
             </div>
 
             <%= if summary.column_count > 0 do %>
@@ -745,6 +759,13 @@ defmodule TrifleApp.Components.DashboardFooter do
     <% end %>
     """
   end
+
+  defp explore_key_path(%Source{} = source, key) when is_binary(key) and key != "" do
+    params = %{source_type: Source.type_string(source), source_id: Source.id(source), key: key}
+    ~p"/explore?#{params}"
+  end
+
+  defp explore_key_path(_source, _key), do: nil
 
   defp format_transponder_error({tag, %_struct{} = exception}) when is_atom(tag) do
     "#{inspect(tag)}: " <> Exception.message(exception)

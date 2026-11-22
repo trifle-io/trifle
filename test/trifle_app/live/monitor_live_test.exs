@@ -47,10 +47,11 @@ defmodule TrifleApp.MonitorLiveTest do
   } do
     assert {:ok, _deleted_database} = Organizations.delete_database(database)
 
-    {:ok, _view, html} = live(conn, ~p"/monitors/#{monitor.id}")
+    {:ok, view, html} = live(conn, ~p"/monitors/#{monitor.id}")
 
     assert html =~ "Latency Watch"
     assert html =~ "Not set"
+    refute has_element?(view, ~s([data-role="explore-metric-key"]))
   end
 
   test "a range over the point limit shows the message instead of crashing", %{
@@ -151,7 +152,15 @@ defmodule TrifleApp.MonitorLiveTest do
     render_async(view)
     assert has_element?(view, "#{attachment} option[value='eu'][selected]")
     assert has_element?(view, "#{attachment} input[value='worker']")
-    assert render(view) =~ "requests.eu.worker"
+
+    explore_params = %{source_type: "database", source_id: database.id, key: "requests.eu.worker"}
+    explore_path = ~p"/explore?#{explore_params}"
+
+    assert has_element?(
+             view,
+             ~s([data-role="explore-metric-key"][href="#{explore_path}"]),
+             "requests.eu.worker"
+           )
 
     view
     |> form("#monitor-segments-form", %{segments: %{region: "us", service: ""}})

@@ -3023,6 +3023,7 @@ defmodule TrifleApp.MonitorLive do
         <.dashboard_footer
           class="mt-8"
           summary={summary}
+          source={@source}
           load_duration_microseconds={@load_duration_microseconds}
           show_export_dropdown={@show_export_dropdown}
           dashboard={monitor_footer_resource(@monitor)}

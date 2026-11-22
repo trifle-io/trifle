@@ -51,6 +51,7 @@ defmodule TrifleApp.DashboardLiveTest do
     {:ok,
      conn: log_in_user(conn, user),
      user: user,
+     organization: organization,
      database: database,
      dashboard: dashboard,
      membership: membership}
@@ -83,6 +84,7 @@ defmodule TrifleApp.DashboardLiveTest do
   test "segment filters attach to the filter bar and keep change, submit and URL selections", %{
     conn: conn,
     dashboard: dashboard,
+    database: database,
     membership: membership
   } do
     {:ok, dashboard} =
@@ -141,6 +143,15 @@ defmodule TrifleApp.DashboardLiveTest do
     render_async(view)
     assert has_element?(view, "#{attachment} option[value='eu'][selected]")
     assert has_element?(view, "#{attachment} input[value='worker']")
+
+    explore_params = %{source_type: "database", source_id: database.id, key: "requests.eu.worker"}
+    explore_path = ~p"/explore?#{explore_params}"
+
+    assert has_element?(
+             view,
+             ~s([data-role="explore-metric-key"][href="#{explore_path}"]),
+             "requests.eu.worker"
+           )
 
     view
     |> form("#dashboard-segments-form", %{segments: %{region: "us", service: ""}})
@@ -590,6 +601,37 @@ defmodule TrifleApp.DashboardLiveTest do
     assert has_element?(view, "#keyboard-shortcuts-title", "Keyboard shortcuts")
     assert has_element?(view, "kbd", "Cmd/Ctrl")
     assert has_element?(view, "kbd", "Esc")
+  end
+
+  test "opens Explore from the footer with the dashboard's source and exact metric key", %{
+    conn: conn,
+    dashboard: dashboard,
+    database: database,
+    organization: organization
+  } do
+    database_fixture(%{organization: organization, display_name: "A database"})
+    key = "api:/v2 + retry & success #1"
+    {:ok, dashboard} = Organizations.update_dashboard(dashboard, %{key: key})
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    redirect = view |> element(~s([data-role="explore-metric-key"]), key) |> render_click()
+    assert {:error, {:live_redirect, %{to: path}}} = redirect
+
+    assert %URI{path: "/explore", query: query} = URI.parse(path)
+
+    assert URI.decode_query(query) == %{
+             "source_type" => "database",
+             "source_id" => database.id,
+             "key" => key
+           }
+
+    assert {:error, {:live_redirect, %{to: normalized_path}}} =
+             follow_redirect(redirect, conn, path)
+
+    assert {:ok, explore, _html} = live(conn, normalized_path)
+    assert has_element?(explore, ~s(button[phx-click="toggle_source_dropdown"]), "some database")
+    assert render_async(explore) =~ "Activity · api:/v2 + retry &amp; success #1"
+    refute has_element?(explore, ~s([data-role="explore-metric-key"]))
   end
 
   test "authenticated dashboards expose annotation payloads and handle CRUD events", %{

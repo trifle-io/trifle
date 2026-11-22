@@ -1908,6 +1908,7 @@ defmodule TrifleApp.Components.DashboardPage do
           <.dashboard_footer
             class="mt-auto"
             summary={summary}
+            source={@source}
             load_duration_microseconds={@load_duration_microseconds}
             show_export_dropdown={@show_export_dropdown}
             dashboard={@dashboard}
