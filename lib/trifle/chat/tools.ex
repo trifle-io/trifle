@@ -924,6 +924,9 @@ defmodule Trifle.Chat.Tools do
     distinguish failure counts from failure rates, and mention unclassified activity when relevant.
     If all counts are unclassified, report that failure status is unavailable for that data.
     Read individual trace records only when the user asks for examples, logs, arguments, or causes.
+    For an activity summary with recent examples, obtain the Stats summary once. Search for the
+    relevant warning and error states in one batch of calls using the same source and timeframe.
+    Merge the matches newest first and read the requested number in one batch.
 
     Trace Stats live in the Stats storage of the selected Traces-enabled database. The Stats system
     key `__system__key__` has a `keys` map that catalogs observed full trace paths. Each full path

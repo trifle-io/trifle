@@ -189,14 +189,15 @@ defmodule Trifle.Chat.SessionStore do
   end
 
   @doc """
-  Clears any pending marker from the session.
+  Clears the pending marker and optionally replaces the stored progress events.
   """
-  @spec clear_pending(Session.t()) :: {:ok, Session.t()} | {:error, term()}
-  def clear_pending(%Session{id: id}) do
+  @spec clear_pending(Session.t(), [Session.progress_event()] | nil) ::
+          {:ok, Session.t()} | {:error, term()}
+  def clear_pending(%Session{id: id}, events \\ nil) do
     transaction(id, fn record, session ->
-      session
-      |> Session.set_pending_started_at(nil)
-      |> then(&persist_session(record, &1))
+      session = Session.set_pending_started_at(session, nil)
+      session = if events, do: Session.set_progress_events(session, events), else: session
+      persist_session(record, session)
     end)
   end
 
@@ -204,14 +205,7 @@ defmodule Trifle.Chat.SessionStore do
   Clears pending response state and stored progress events from the session.
   """
   @spec clear_pending_progress(Session.t()) :: {:ok, Session.t()} | {:error, term()}
-  def clear_pending_progress(%Session{id: id}) do
-    transaction(id, fn record, session ->
-      session
-      |> Session.set_pending_started_at(nil)
-      |> Session.set_progress_events([])
-      |> then(&persist_session(record, &1))
-    end)
-  end
+  def clear_pending_progress(%Session{} = session), do: clear_pending(session, [])
 
   @doc """
   Resets the progress state for the session (clears events and sets pending start).

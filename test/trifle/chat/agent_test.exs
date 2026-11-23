@@ -80,11 +80,4 @@ defmodule Trifle.Chat.AgentTest do
     assert compact["visualization"]["widget_count"] == 1
     refute Map.has_key?(compact["visualization"], "series_snapshot")
   end
-
-  test "too many iterations returns a user-facing error map" do
-    error = Agent.__too_many_iterations_error_for_test__()
-
-    assert error.status == :too_many_iterations
-    assert error.message =~ "retry limit"
-  end
 end

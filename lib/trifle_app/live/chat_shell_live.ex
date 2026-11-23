@@ -406,38 +406,8 @@ defmodule TrifleApp.ChatShellLive do
     {:noreply, socket |> push_event("chat_scroll_bottom", %{})}
   end
 
-  def handle_async(:chat_response, {:ok, {:error, %{status: :missing_api_key} = error}}, socket) do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:sending, false)
-      |> assign(:session, reload_session(socket.assigns.session))
-      |> sync_session_context()
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> assign(:pending_context_request_id, nil)
-      |> assign(:pending_page_context_override, nil)
-      |> put_flash(:error, format_error(error))
-      |> append_final_duration()
-
-    {:noreply, socket}
-  end
-
   def handle_async(:chat_response, {:ok, {:error, reason}}, socket) do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:sending, false)
-      |> assign(:session, reload_session(socket.assigns.session))
-      |> sync_session_context()
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> assign(:pending_context_request_id, nil)
-      |> assign(:pending_page_context_override, nil)
-      |> put_flash(:error, format_error(reason))
-      |> append_final_duration()
-
-    {:noreply, socket}
+    {:noreply, finish_failed_response(socket, format_error(reason))}
   end
 
   def handle_async(:chat_response, {:exit, reason}, socket)
@@ -459,19 +429,8 @@ defmodule TrifleApp.ChatShellLive do
     {:noreply, socket}
   end
 
-  def handle_async(:chat_response, {:exit, reason}, socket) do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:sending, false)
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> assign(:pending_context_request_id, nil)
-      |> assign(:pending_page_context_override, nil)
-      |> put_flash(:error, "Chat process crashed: #{inspect(reason)}")
-      |> append_final_duration()
-
-    {:noreply, socket}
+  def handle_async(:chat_response, {:exit, _reason}, socket) do
+    {:noreply, finish_failed_response(socket, "Baker's response was interrupted. Try again.")}
   end
 
   @impl true
@@ -2165,7 +2124,7 @@ defmodule TrifleApp.ChatShellLive do
     session = socket.assigns[:session]
     page_context = socket.assigns[:current_page_context] || socket.assigns[:session_page_context]
 
-    if match?(%Session{}, session) and Chat.pending?(session) do
+    if connected?(socket) and match?(%Session{}, session) and Chat.pending?(session) do
       cond do
         owns_chat_run?(socket, session) ->
           socket
@@ -2226,14 +2185,21 @@ defmodule TrifleApp.ChatShellLive do
           end
       end
     else
-      socket
-      |> release_chat_run()
-      |> cancel_progress_timer()
-      |> assign(:sending, false)
-      |> assign(:progress_events, [])
-      |> assign(:progress_started_at, nil)
-      |> assign(:progress_stage_started_at, nil)
-      |> assign(:progress_tick_at, nil)
+      socket = release_chat_run(socket)
+
+      case session do
+        %Session{pending_started_at: nil} ->
+          sync_progress_from_session(socket, session)
+
+        _ ->
+          socket
+          |> cancel_progress_timer()
+          |> assign(:sending, false)
+          |> assign(:progress_events, [])
+          |> assign(:progress_started_at, nil)
+          |> assign(:progress_stage_started_at, nil)
+          |> assign(:progress_tick_at, nil)
+      end
     end
   end
 
@@ -2611,6 +2577,44 @@ defmodule TrifleApp.ChatShellLive do
     |> assign(:progress_started_at, nil)
   end
 
+  defp finish_failed_response(socket, message) do
+    socket = finish_all_progress_events(socket, DateTime.utc_now())
+
+    events =
+      socket.assigns.progress_events ++
+        [
+          build_progress_entry("error", %{}, ensure_period(message),
+            started_at: nil,
+            display_elapsed: false
+          )
+        ]
+
+    current = socket.assigns.session
+
+    session =
+      case SessionStore.clear_pending(current, build_persisted_events(events)) do
+        {:ok, updated} -> updated
+        {:error, _reason} -> reload_session(current) || current
+      end
+
+    socket
+    |> release_chat_run()
+    |> assign(:session, session)
+    |> assign_messages(session)
+    |> assign_session_context(session)
+    |> assign(:sending, false)
+    |> assign(:session_snapshot, nil)
+    |> assign(:pending_user_message, nil)
+    |> assign(:pending_context_request_id, nil)
+    |> assign(:pending_page_context_override, nil)
+    |> cancel_progress_timer()
+    |> assign(:progress_events, events)
+    |> assign(:progress_started_at, nil)
+    |> assign(:progress_tick_at, nil)
+    |> assign(:progress_stage_started_at, nil)
+    |> push_event("chat_scroll_bottom", %{})
+  end
+
   defp elapsed_seconds(nil, _finish), do: nil
 
   defp elapsed_seconds(%DateTime{} = start, %DateTime{} = finish) do
@@ -2724,10 +2728,6 @@ defmodule TrifleApp.ChatShellLive do
   end
 
   defp assign_session_context(socket, _), do: assign(socket, :session_page_context, nil)
-
-  defp sync_session_context(socket) do
-    assign_session_context(socket, socket.assigns[:session])
-  end
 
   defp session_page_context(%Session{messages: messages}) do
     messages
@@ -3041,7 +3041,12 @@ defmodule TrifleApp.ChatShellLive do
   defp progress_events(assigns) do
     ~H"""
     <% last_id = last_event_id(@events) %>
-    <div :for={event <- @events} id={event.id} class={progress_event_class(event, last_id, @active)}>
+    <div
+      :for={event <- @events}
+      id={event.id}
+      role={if event.type == "error", do: "alert"}
+      class={progress_event_class(event, last_id, @active)}
+    >
       <span class={progress_event_text_class(event, last_id, @active)}>
         {event.text}
       </span>
@@ -3064,6 +3069,10 @@ defmodule TrifleApp.ChatShellLive do
   end
 
   defp last_event_id(_), do: nil
+
+  defp progress_event_class(%{type: "error"}, _last_id, _active) do
+    "text-center text-sm text-rose-700 dark:text-rose-300"
+  end
 
   defp progress_event_class(event, last_id, active) do
     base =

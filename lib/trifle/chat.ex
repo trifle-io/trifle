@@ -70,38 +70,11 @@ defmodule Trifle.Chat do
   end
 
   @doc """
-  Returns true when the session appears to have an in-flight assistant response.
+  Returns true when the session has a pending assistant response.
   """
   @spec pending?(Session.t() | nil) :: boolean()
-  def pending?(nil), do: false
-
   def pending?(%Session{pending_started_at: %DateTime{}}), do: true
-
-  def pending?(%Session{messages: messages}) do
-    case List.last(messages) do
-      nil ->
-        false
-
-      message ->
-        role = Map.get(message, :role) || Map.get(message, "role")
-        tool_calls = Map.get(message, :tool_calls, Map.get(message, "tool_calls"))
-        content = Map.get(message, :content, Map.get(message, "content", ""))
-
-        cond do
-          role in ["user", "tool"] ->
-            true
-
-          role == "assistant" and tool_calls not in [nil, []] ->
-            true
-
-          role == "assistant" and (is_binary(content) and String.trim(content) == "") ->
-            true
-
-          true ->
-            false
-        end
-    end
-  end
+  def pending?(_), do: false
 
   @doc """
   Builds the tool context from the LiveView assigns.

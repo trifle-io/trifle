@@ -12,7 +12,7 @@ defmodule Trifle.Chat.Agent do
   alias Trifle.Chat.Tools
   alias Trifle.Chat.Visualizations
 
-  @max_iterations 5
+  @max_tool_rounds 5
 
   @type context :: Tools.context()
 
@@ -31,8 +31,8 @@ defmodule Trifle.Chat.Agent do
 
     timestamp = DateTime.utc_now()
 
-    with {:ok, session_with_user} <- SessionStore.append_message(session, user_entry),
-         {:ok, pending_session} <- SessionStore.reset_progress(session_with_user, timestamp) do
+    with {:ok, pending_session} <-
+           SessionStore.append_messages_and_reset_progress(session, [user_entry], timestamp) do
       Notifier.notify(context, {:progress, :received})
       run_loop(pending_session, context, 1)
     end
@@ -58,40 +58,45 @@ defmodule Trifle.Chat.Agent do
     run_loop(session, context, 1)
   end
 
-  defp run_loop(session, _context, iteration) when iteration > @max_iterations do
-    clear_pending_session(session)
-    {:error, too_many_iterations_error()}
-  end
-
   defp run_loop(%Session{} = session, context, iteration) do
     Notifier.notify(context, {:progress, :thinking, thinking_payload(iteration)})
-    base_messages = build_messages(session, context)
+    messages = build_messages(session, context)
+    tools_allowed? = iteration <= @max_tool_rounds
+    opts = [model: OpenAIClient.model(), tools: Tools.definitions(context)]
 
-    case OpenAIClient.chat_completion(base_messages,
-           tools: Tools.definitions(context),
-           model: preferred_model()
-         ) do
-      {:ok, %{"choices" => [choice | _]} = _response} ->
-        message = choice["message"] || %{}
-        finish_reason = choice["finish_reason"]
+    {messages, opts} =
+      if tools_allowed? do
+        {messages, opts}
+      else
+        instruction = %{
+          "role" => "system",
+          "content" =>
+            "Give the user a final answer now using the tool results already gathered. " <>
+              "If any part of the request remains unverified, say which part and answer from the available evidence."
+        }
 
-        cond do
-          message["tool_calls"] ->
+        {messages ++ [instruction], Keyword.put(opts, :tool_choice, "none")}
+      end
+
+    client = Application.get_env(:trifle, :chat_completion_client, OpenAIClient)
+
+    case client.chat_completion(messages, opts) do
+      {:ok, %{"choices" => [%{"message" => message} | _]}} when is_map(message) ->
+        case message["tool_calls"] do
+          [_ | _] when tools_allowed? ->
             handle_tool_calls(session, context, message, iteration)
 
-          finish_reason in ["stop", "length", nil] ->
-            store_assistant_message(session, message, context)
+          [_ | _] ->
+            incomplete_response(session)
 
-          true ->
+          _ ->
             store_assistant_message(session, message, context)
         end
 
-      {:ok, other} ->
-        clear_pending_session(session)
-        {:error, {:unexpected_response, other}}
+      {:ok, _other} ->
+        incomplete_response(session)
 
       {:error, reason} ->
-        Notifier.notify(context, {:progress, :error, reason})
         {:error, normalize_openai_error(reason, session)}
     end
   end
@@ -124,23 +129,34 @@ defmodule Trifle.Chat.Agent do
 
   defp store_assistant_message(session, message, context) do
     visualizations = Visualizations.pending_from_messages(session.messages)
+    content = coerce_content(message["content"])
 
-    entry = %{
-      role: "assistant",
-      content: coerce_content(message["content"]),
-      visualizations: visualizations
-    }
+    if String.trim(content) == "" and visualizations == [] do
+      incomplete_response(session)
+    else
+      entry = %{role: "assistant", content: content, visualizations: visualizations}
 
-    Notifier.notify(context, {:progress, :responding})
+      Notifier.notify(context, {:progress, :responding})
 
-    case SessionStore.append_message_and_clear_pending(session, entry) do
-      {:ok, updated_session} ->
-        {:ok, updated_session, entry}
+      case SessionStore.append_message_and_clear_pending(session, entry) do
+        {:ok, updated_session} ->
+          {:ok, updated_session, entry}
 
-      error ->
-        clear_pending_session(session)
-        error
+        error ->
+          clear_pending_session(session)
+          error
+      end
     end
+  end
+
+  defp incomplete_response(session) do
+    clear_pending_session(session)
+
+    {:error,
+     %{
+       status: :incomplete_response,
+       message: "Baker stopped before returning an answer. Try again."
+     }}
   end
 
   defp execute_tool_calls(session, tool_calls, context) when is_list(tool_calls) do
@@ -342,8 +358,6 @@ defmodule Trifle.Chat.Agent do
 
   defp coerce_content(other), do: inspect(other)
 
-  defp preferred_model, do: Trifle.Chat.OpenAIClient.model()
-
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
@@ -352,36 +366,17 @@ defmodule Trifle.Chat.Agent do
     def __build_messages_for_test__(session, context) do
       build_messages(session, context)
     end
-
-    @doc false
-    def __too_many_iterations_error_for_test__ do
-      too_many_iterations_error()
-    end
-  end
-
-  defp too_many_iterations_error do
-    %{
-      status: :too_many_iterations,
-      message:
-        "The chat agent hit its retry limit before producing a final answer. Try asking a simpler follow-up or narrowing the request."
-    }
   end
 
   defp normalize_openai_error(error, session)
 
-  defp normalize_openai_error({:http_error, status, body}, session) do
+  defp normalize_openai_error({:http_error, status, _body}, session) do
     clear_pending_session(session)
-
-    message =
-      case Jason.decode(body) do
-        {:ok, %{"error" => %{"message" => msg}}} when is_binary(msg) -> msg
-        _ -> body
-      end
 
     %{
       status: :http_error,
       http_status: status,
-      message: message
+      message: "The model request failed with HTTP status #{status}. Try again."
     }
   end
 
@@ -412,12 +407,12 @@ defmodule Trifle.Chat.Agent do
     }
   end
 
-  defp normalize_openai_error(other, session) do
+  defp normalize_openai_error(_other, session) do
     clear_pending_session(session)
 
     %{
       status: :unknown_error,
-      message: inspect(other)
+      message: "The model request failed. Try again."
     }
   end
 

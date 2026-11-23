@@ -13,6 +13,12 @@ defmodule TrifleApp.ChatShellLiveTest do
   alias TrifleApp.ChatPageContext
   alias TrifleApp.ChatShellLive
 
+  defmodule CompletionStub do
+    def chat_completion(messages, opts) do
+      Application.fetch_env!(:trifle, __MODULE__).(messages, opts)
+    end
+  end
+
   setup %{conn: conn} do
     user = AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: user})
@@ -386,6 +392,149 @@ defmodule TrifleApp.ChatShellLiveTest do
     assert_eventually_session_message(session.id, "Use monitor context")
     assert_eventually_session_context(session.id, "Baker Agent Monitor")
   end
+
+  test "writes an answer from the gathered results after the last tool round", %{
+    conn: conn,
+    user: user,
+    membership: membership
+  } do
+    test_pid = self()
+    question = "Summarize the activity and read the last three warnings."
+
+    stub_completion(fn messages, opts ->
+      rounds = Enum.count(messages, &(&1["role"] == "tool"))
+      send(test_pid, {:completion, rounds, opts[:tool_choice]})
+
+      if opts[:tool_choice] == "none" do
+        assert Enum.any?(messages, &(&1["role"] == "user" and &1["content"] == question))
+        assert List.last(messages)["content"] =~ "using the tool results already gathered"
+        model_reply(%{"content" => "Here is the review of the three warnings."})
+      else
+        tool_reply(rounds)
+      end
+    end)
+
+    {:ok, view, _html} = mount_shell(conn, user, membership)
+    render_submit(view, "send_message", %{"chat" => %{"message" => question}})
+
+    for round <- 0..4 do
+      assert_receive {:completion, ^round, nil}, 1_000
+    end
+
+    assert_receive {:completion, 5, "none"}, 1_000
+
+    html = assert_eventually_renders(view, "Worked for")
+    assert html =~ "Here is the review of the three warnings."
+    assert html =~ "Worked for"
+    refute has_element?(view, ~s(button[phx-click="cancel_message"]))
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+    refute Chat.pending?(session)
+    assert Enum.count(session.messages, &(&1.role == "tool")) == 5
+    assert List.last(session.messages).content == "Here is the review of the three warnings."
+  end
+
+  test "shows an incomplete model reply after tool calls and keeps it stopped on reload", %{
+    conn: conn,
+    user: user,
+    membership: membership
+  } do
+    test_pid = self()
+
+    stub_completion(fn messages, _opts ->
+      send(test_pid, :completion)
+
+      if Enum.any?(messages, &(&1["role"] == "tool")),
+        do: model_reply(%{"content" => nil}),
+        else: tool_reply(0)
+    end)
+
+    {:ok, view, _html} = mount_shell(conn, user, membership)
+    render_submit(view, "send_message", %{"chat" => %{"message" => "Review the warnings"}})
+
+    assert_receive :completion, 1_000
+    assert_receive :completion, 1_000
+
+    html = assert_eventually_renders(view, "Baker stopped before returning an answer.")
+    refute html =~ "Worked for"
+    refute has_element?(view, ~s(button[phx-click="cancel_message"]))
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+    refute Chat.pending?(session)
+    assert List.last(session.messages).role == "tool"
+
+    {:ok, reloaded, html} = mount_shell(conn, user, membership)
+    assert html =~ "Baker stopped before returning an answer."
+    refute has_element?(reloaded, ~s(button[phx-click="cancel_message"]))
+    refute_received :completion
+  end
+
+  test "resumes a genuinely pending response on reconnect", %{
+    conn: conn,
+    user: user,
+    membership: membership
+  } do
+    test_pid = self()
+
+    stub_completion(fn messages, _opts ->
+      send(test_pid, :completion)
+      assert List.last(messages)["content"] == "Finish this reply"
+      model_reply(%{"content" => "The pending reply is complete."})
+    end)
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+
+    {:ok, pending} =
+      SessionStore.append_messages_and_reset_progress(
+        session,
+        [%{role: "user", content: "Finish this reply"}],
+        DateTime.utc_now()
+      )
+
+    assert Chat.pending?(pending)
+
+    {:ok, view, _html} = mount_shell(conn, user, membership)
+    assert_receive :completion, 1_000
+    assert render_async(view) =~ "The pending reply is complete."
+  end
+
+  defp mount_shell(conn, user, membership) do
+    live_isolated(conn, ChatShellLive,
+      session: %{
+        "current_user_id" => to_string(user.id),
+        "current_membership_id" => to_string(membership.id)
+      }
+    )
+  end
+
+  defp stub_completion(fun) do
+    previous = Application.fetch_env(:trifle, :chat_completion_client)
+    Application.put_env(:trifle, :chat_completion_client, CompletionStub)
+    Application.put_env(:trifle, CompletionStub, fun)
+
+    on_exit(fn ->
+      Application.delete_env(:trifle, CompletionStub)
+
+      case previous do
+        {:ok, client} -> Application.put_env(:trifle, :chat_completion_client, client)
+        :error -> Application.delete_env(:trifle, :chat_completion_client)
+      end
+    end)
+  end
+
+  defp tool_reply(round) do
+    model_reply(%{
+      "tool_calls" => [
+        %{
+          "id" => "call-#{round}",
+          "type" => "function",
+          "function" => %{"name" => "describe_dashboard_widgets", "arguments" => "{}"}
+        }
+      ]
+    })
+  end
+
+  defp model_reply(message), do: {:ok, %{"choices" => [%{"message" => message}]}}
 
   defp chat_context(page_type, route, title, source, query_overrides \\ %{}) do
     query =
