@@ -3,8 +3,8 @@ defmodule Trifle.Monitors.AlertSeries do
 
   require Logger
 
-  alias Trifle.Monitors.Monitor
-  alias Trifle.Stats.Series
+  alias Trifle.Monitors.{Alert, AlertEvaluator, Monitor}
+  alias Trifle.Stats.{Path, Series}
 
   alias TrifleApp.Components.DashboardWidgets.{
     Helpers,
@@ -229,10 +229,7 @@ defmodule Trifle.Monitors.AlertSeries do
   def source_widget_height, do: @source_widget_height
 
   def resolved_final_targets(%Series{} = stats, %Monitor{} = monitor) do
-    widget = source_widget(monitor)
-
-    case MetricSeriesEvaluator.resolve_timeline_rows(stats, widget, preserve_missing: true)
-         |> List.last() do
+    case resolve_final_row(stats, monitor) do
       %{entries: entries, row: row, index: row_index} when is_map(entries) ->
         entries
         |> Enum.sort_by(fn {binding_key, entry} ->
@@ -271,6 +268,59 @@ defmodule Trifle.Monitors.AlertSeries do
   end
 
   def resolved_final_targets(_stats, _monitor), do: []
+
+  def wildcard_values(%Series{} = stats, %Monitor{} = monitor) do
+    case resolve_final_row(stats, monitor) do
+      %{entries: entries} ->
+        entries
+        |> Map.keys()
+        |> Enum.flat_map(&binding_wildcard_values/1)
+        |> Enum.uniq()
+        |> Enum.sort()
+
+      _ ->
+        []
+    end
+  end
+
+  def wildcard_values(_stats, _monitor), do: []
+
+  def matches_target?(
+        %Alert{
+          settings: %Alert.Settings{
+            wildcard_filter_operator: operator,
+            wildcard_filter_values: [_ | _] = values
+          }
+        },
+        %{binding_key: {:captures, _captures} = binding_key}
+      ) do
+    matched? = Enum.any?(binding_wildcard_values(binding_key), &(&1 in values))
+    if operator == :not_in, do: not matched?, else: matched?
+  end
+
+  def matches_target?(_alert, _target), do: true
+
+  defp binding_wildcard_values({:captures, captures}) do
+    Enum.map(captures, fn capture -> capture |> Path.segments() |> Enum.join(".") end)
+  end
+
+  defp binding_wildcard_values(_binding_key), do: []
+
+  def no_matching_targets_result(%Alert{} = alert) do
+    %AlertEvaluator.Result{
+      alert_id: alert.id,
+      strategy: alert.analysis_strategy,
+      triggered?: false,
+      summary: "No series matched the wildcard filter.",
+      meta: %{reason: :no_matching_targets}
+    }
+  end
+
+  defp resolve_final_row(stats, monitor) do
+    stats
+    |> MetricSeriesEvaluator.resolve_timeline_rows(source_widget(monitor), preserve_missing: true)
+    |> List.last()
+  end
 
   defp current_rows(%Monitor{} = monitor) do
     monitor.alert_series

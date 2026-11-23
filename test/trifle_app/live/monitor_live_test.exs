@@ -8,6 +8,7 @@ defmodule TrifleApp.MonitorLiveTest do
   alias Trifle.AccountsFixtures
   alias Trifle.Monitors
   alias Trifle.Organizations
+  alias Trifle.Stats.Source
 
   setup %{conn: conn} do
     user = AccountsFixtures.user_fixture()
@@ -52,6 +53,87 @@ defmodule TrifleApp.MonitorLiveTest do
     assert html =~ "Latency Watch"
     assert html =~ "Not set"
     refute has_element?(view, ~s([data-role="explore-metric-key"]))
+  end
+
+  test "saves and clears an alert's wildcard values", %{
+    conn: conn,
+    monitor: monitor,
+    membership: membership,
+    database: database
+  } do
+    {:ok, _} = Organizations.setup_database(database)
+
+    {:ok, monitor} =
+      Monitors.update_monitor_for_membership(monitor, membership, %{
+        alert_metric_path: "products.*"
+      })
+
+    config = database |> Source.from_database() |> Source.stats_config()
+    config = %{config | buffer_enabled: false, storage: nil}
+
+    assert {:ok, _} =
+             Trifle.Stats.track(
+               monitor.alert_metric_key,
+               DateTime.add(DateTime.utc_now(), -60, :second),
+               %{"products" => %{"basic" => 100, "enterprise" => 200}, "total" => 300},
+               config
+             )
+
+    {:ok, view, _html} = live(conn, ~p"/monitors/#{monitor.id}")
+    render_async(view)
+
+    view |> element(~s(button[phx-click="new_alert"])) |> render_click()
+
+    assert has_element?(view, "[role=combobox][name='alert[wildcard_filter_input]']")
+    assert has_element?(view, ~s([data-suggestions='["basic","enterprise"]']))
+    assert has_element?(view, "option[value=in]", "Match")
+    assert has_element?(view, "option[value=not_in]", "Exclude")
+
+    view
+    |> form("#monitor-alert-form")
+    |> render_submit(%{
+      "alert" => %{
+        "wildcard_filter_input" => " enterprise, basic ",
+        "settings" => %{
+          "threshold_value" => "1000",
+          "wildcard_filter_operator" => "not_in",
+          "wildcard_filter_values" => ["", "basic"]
+        }
+      }
+    })
+
+    [alert] = Monitors.list_alerts(monitor)
+    assert alert.settings.wildcard_filter_operator == :not_in
+    assert alert.settings.wildcard_filter_values == ["basic", "enterprise"]
+    assert has_element?(view, "li p", "Excluding 2 paths")
+
+    view |> element(~s(button[phx-click="edit_alert"])) |> render_click()
+    assert has_element?(view, "option[value=not_in][selected]")
+
+    assert has_element?(
+             view,
+             ~s([data-values='["basic","enterprise"]'])
+           )
+
+    view
+    |> form("#monitor-alert-form")
+    |> render_submit(%{
+      "alert" => %{
+        "settings" => %{"wildcard_filter_operator" => "in", "wildcard_filter_values" => ["basic"]}
+      }
+    })
+
+    assert has_element?(view, "li p", "Matching 1 path")
+    refute has_element?(view, "li p", "Excluding 2 paths")
+
+    view |> element(~s(button[phx-click="edit_alert"])) |> render_click()
+
+    view
+    |> form("#monitor-alert-form")
+    |> render_submit(%{"alert" => %{"settings" => %{"wildcard_filter_values" => [""]}}})
+
+    assert Monitors.get_alert!(monitor, alert.id).settings.wildcard_filter_values == []
+    refute has_element?(view, "li p", "Matching 1 path")
   end
 
   test "a range over the point limit shows the message instead of crashing", %{

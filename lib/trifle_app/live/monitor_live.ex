@@ -779,6 +779,7 @@ defmodule TrifleApp.MonitorLive do
       true ->
         strategy = Map.get(request, :strategy) || Map.get(request, "strategy")
         variant = Map.get(request, :variant) || Map.get(request, "variant")
+        alert = Map.get(request, :alert)
 
         socket = register_ai_request(socket, id, request_id)
 
@@ -794,7 +795,8 @@ defmodule TrifleApp.MonitorLive do
                 monitor,
                 stats,
                 strategy: strategy,
-                variant: variant
+                variant: variant,
+                alert: alert
               )
             end
           )
@@ -865,6 +867,9 @@ defmodule TrifleApp.MonitorLive do
 
   defp format_ai_error(:no_data),
     do: "No recent data available for this metric. Adjust the timeframe and retry."
+
+  defp format_ai_error(:no_matching_targets),
+    do: "No recent series matched the wildcard filter."
 
   defp format_ai_error(:unsupported_strategy),
     do: "This alert type is not supported for AI configuration yet."
@@ -2447,6 +2452,20 @@ defmodule TrifleApp.MonitorLive do
 
   defp alert_summary(_alert, evaluation), do: evaluation_summary(evaluation)
 
+  defp alert_filter_summary(%Alert{
+         settings: %Alert.Settings{
+           wildcard_filter_operator: operator,
+           wildcard_filter_values: [_ | _] = values
+         }
+       }) do
+    action = if operator == :not_in, do: "Excluding", else: "Matching"
+    count = length(values)
+    paths = if count == 1, do: "path", else: "paths"
+    "#{action} #{count} #{paths}"
+  end
+
+  defp alert_filter_summary(_alert), do: nil
+
   defp evaluation_summary(nil), do: "Awaiting recent data."
 
   defp evaluation_summary(%AlertEvaluator.Result{summary: summary})
@@ -2954,6 +2973,7 @@ defmodule TrifleApp.MonitorLive do
                       <% failed? = status_atom == :failed %>
                       <% alert_key = normalize_id(alert.id) %>
                       <% running_alert? = match?({:alert, ^alert_key, :running}, @test_delivery_state) %>
+                      <% filter_summary = alert_filter_summary(alert) %>
                       <li class={[
                         "flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800",
                         triggered? &&
@@ -2966,6 +2986,12 @@ defmodule TrifleApp.MonitorLive do
                         <div class="min-w-0">
                           <p class="text-sm font-semibold text-slate-900 dark:text-white">
                             {MonitorLayout.alert_label(alert)}
+                          </p>
+                          <p
+                            :if={filter_summary}
+                            class="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300"
+                          >
+                            {filter_summary}
                           </p>
                           <p class={[
                             "mt-1 text-xs text-slate-500 dark:text-slate-400",
@@ -3253,6 +3279,7 @@ defmodule TrifleApp.MonitorLive do
         module={MonitorAlertFormComponent}
         id={"monitor-alert-form-#{@monitor.id}"}
         monitor={@monitor}
+        stats={@stats}
         alert={@alert_modal}
         action={@alert_modal_action}
         changeset={@alert_modal_changeset}

@@ -1,8 +1,8 @@
 defmodule Trifle.Monitors.AlertAdvisorTest do
   use ExUnit.Case, async: true
 
-  alias Trifle.Monitors.AlertAdvisor
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{Alert, AlertAdvisor, Monitor}
+  alias Trifle.Monitors.Alert.Settings
   alias Trifle.Stats.Series
 
   test "recommend merges points from all resolved final targets" do
@@ -65,6 +65,19 @@ defmodule Trifle.Monitors.AlertAdvisorTest do
     assert payload["monitor"]["metric_path"] == "a - b"
     assert length(payload["recent_values"]) == 4
     assert Enum.member?(payload["recent_values"], 14.0)
+
+    alert = %Alert{settings: %Settings{wildcard_filter_values: ["a"]}}
+
+    assert {:ok, _} = AlertAdvisor.recommend(monitor, stats, client: client, alert: alert)
+    assert_received {:advisor_messages, messages}
+
+    payload =
+      messages
+      |> Enum.find(&(&1["role"] == "user"))
+      |> Map.fetch!("content")
+      |> extract_payload()
+
+    assert payload["recent_values"] == [7.0, 7.0, 8.0]
   end
 
   test "recommend unwraps legacy fallback series points" do

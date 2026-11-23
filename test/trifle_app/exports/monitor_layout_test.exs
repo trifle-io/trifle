@@ -107,6 +107,47 @@ defmodule TrifleApp.Exports.MonitorLayoutTest do
     refute Map.has_key?(datasets.timeseries[critical_widget_id], :alert_summary)
   end
 
+  test "wildcard filters scope alert charts and evaluations to matching captures" do
+    stats = build_series()
+
+    alerts =
+      for {id, operator, values} <- [
+            {"included", :in, ["a"]},
+            {"excluded", :not_in, ["a"]},
+            {"unmatched", :in, ["missing"]}
+          ] do
+        %Alert{
+          id: id,
+          settings: %Settings{
+            threshold_value: 15.0,
+            wildcard_filter_operator: operator,
+            wildcard_filter_values: values
+          }
+        }
+      end
+
+    monitor = %Monitor{
+      id: "monitor-1",
+      type: :alert,
+      alert_series: [
+        %{"kind" => "path", "path" => "incoming.*", "label" => "Incoming"}
+      ],
+      alerts: alerts
+    }
+
+    assert AlertSeries.wildcard_values(stats, monitor) == ["a", "b"]
+
+    [_source, group_a, group_b] = MonitorLayout.alert_widgets(monitor, stats)
+    assert [%{"alert_ref" => "included"}] = group_a["children"]
+    assert [%{"alert_ref" => "excluded"}] = group_b["children"]
+    assert group_b["y"] == group_a["y"] + group_a["h"]
+
+    {_datasets, evaluations} = MonitorLayout.inject_alert_overlay(%{}, monitor, stats)
+    refute evaluations["included"].triggered?
+    assert evaluations["excluded"].triggered?
+    assert evaluations["unmatched"].meta.reason == :no_matching_targets
+  end
+
   test "filters an alert snapshot to the source chart and selected target paths" do
     stats = build_series()
 

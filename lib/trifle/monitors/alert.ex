@@ -32,6 +32,8 @@ defmodule Trifle.Monitors.Alert do
       field :treat_nil_as_zero, :boolean, default: false
       field :cusum_k, :float
       field :cusum_h, :float
+      field :wildcard_filter_operator, Ecto.Enum, values: [:in, :not_in], default: :in
+      field :wildcard_filter_values, {:array, :string}, default: []
     end
   end
 
@@ -45,7 +47,9 @@ defmodule Trifle.Monitors.Alert do
     :hampel_mad_floor,
     :treat_nil_as_zero,
     :cusum_k,
-    :cusum_h
+    :cusum_h,
+    :wildcard_filter_operator,
+    :wildcard_filter_values
   ]
 
   schema "monitor_alerts" do
@@ -113,7 +117,13 @@ defmodule Trifle.Monitors.Alert do
     settings =
       cond do
         current != nil and current != strategy ->
-          default_settings_struct(strategy)
+          previous = alert.settings || %Settings{}
+
+          %{
+            default_settings_struct(strategy)
+            | wildcard_filter_operator: previous.wildcard_filter_operator,
+              wildcard_filter_values: previous.wildcard_filter_values
+          }
 
         is_nil(alert.settings) ->
           default_settings_struct(strategy)
@@ -157,7 +167,16 @@ defmodule Trifle.Monitors.Alert do
 
     settings
     |> cast(attrs, @settings_fields, empty_values: [""])
+    |> validate_required([:wildcard_filter_operator])
+    |> update_change(:wildcard_filter_values, &normalize_wildcard_values/1)
     |> apply_strategy_validations(strategy)
+  end
+
+  defp normalize_wildcard_values(values) do
+    values
+    |> List.wrap()
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    |> Enum.uniq()
   end
 
   defp apply_strategy_validations(changeset, :threshold) do

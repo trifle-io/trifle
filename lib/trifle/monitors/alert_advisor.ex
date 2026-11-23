@@ -70,6 +70,7 @@ defmodule Trifle.Monitors.AlertAdvisor do
     * `:strategy` - Overrides the analysis strategy (defaults to the monitor's current strategy)
     * `:variant` - Sensitivity variant (`:balanced` by default)
     * `:series` - The timeseries dataset to analyse (required)
+    * `:alert` - Applies the alert's wildcard filter to the recommendation data
     * `:client` - MFA or anonymous function to call OpenAI (defaults to `OpenAIClient.chat_completion/2`)
     * `:max_points` - Maximum datapoints to include in the prompt (defaults to #{@max_points})
 
@@ -92,13 +93,15 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
     client = Keyword.get(opts, :client, &OpenAIClient.chat_completion/2)
     max_points = Keyword.get(opts, :max_points, @max_points)
+    alert = Keyword.get(opts, :alert)
 
     with runtime_api_key <- runtime_api_key(),
          model <- advisor_model(),
          max_tokens <- advisor_max_completion_tokens(),
          {:ok, strategy} <- ensure_supported_strategy(strategy),
          {:ok, variant} <- ensure_supported_variant(variant),
-         {:ok, {path, points}} <- extract_monitor_series_points(monitor, series, max_points),
+         {:ok, {path, points}} <-
+           extract_monitor_series_points(monitor, series, max_points, alert),
          {:ok, summary} <- summarise_points(points),
          {:ok, payload_map} <-
            build_prompt_payload(monitor, path, strategy, variant, summary, points),
@@ -131,22 +134,12 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
   def recommend(_, _, _), do: {:error, :unsupported_context}
 
-  defp extract_monitor_series_points(%Monitor{} = monitor, %Series{} = series, max_points) do
+  defp extract_monitor_series_points(%Monitor{} = monitor, %Series{} = series, max_points, alert) do
     case AlertSeries.resolved_final_targets(series, monitor) do
-      targets when is_list(targets) and targets != [] ->
-        points =
-          targets
-          |> Enum.flat_map(&normalize_resolved_target_points/1)
-          |> Enum.sort_by(& &1["at"], &<=/2)
-          |> maybe_trim(max_points)
-
-        case points do
-          [] ->
-            {:error, :no_data}
-
-          _ ->
-            {:ok, {resolved_target_display(targets, monitor), points}}
-        end
+      [_ | _] = targets ->
+        targets
+        |> Enum.filter(&AlertSeries.matches_target?(alert, &1))
+        |> extract_target_points(monitor, max_points)
 
       [] ->
         case String.trim(to_string(monitor.alert_metric_path || "")) do
@@ -159,6 +152,21 @@ defmodule Trifle.Monitors.AlertAdvisor do
               {:error, reason} -> {:error, reason}
             end
         end
+    end
+  end
+
+  defp extract_target_points([], _monitor, _max_points), do: {:error, :no_matching_targets}
+
+  defp extract_target_points(targets, monitor, max_points) do
+    points =
+      targets
+      |> Enum.flat_map(&normalize_resolved_target_points/1)
+      |> Enum.sort_by(& &1["at"], &<=/2)
+      |> maybe_trim(max_points)
+
+    case points do
+      [] -> {:error, :no_data}
+      _ -> {:ok, {resolved_target_display(targets, monitor), points}}
     end
   end
 

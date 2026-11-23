@@ -714,8 +714,20 @@ defmodule TrifleApp.Exports.MonitorLayout do
         {alert_id, aggregate_alert_results(alert, results)}
       end)
 
-    {dataset_map, evaluations}
+    {dataset_map, add_unmatched_alerts(evaluations, alerts, targets, rendered_widget_ids)}
   end
+
+  defp add_unmatched_alerts(evaluations, alerts, [_ | _] = targets, nil) do
+    Enum.reduce(alerts, evaluations, fn alert, acc ->
+      if alert.id && !Enum.any?(targets, &AlertSeries.matches_target?(alert, &1)) do
+        Map.put(acc, alert.id, AlertSeries.no_matching_targets_result(alert))
+      else
+        acc
+      end
+    end)
+  end
+
+  defp add_unmatched_alerts(evaluations, _alerts, _targets, _widget_ids), do: evaluations
 
   defp normalize_rendered_widget_ids(nil), do: nil
 
@@ -741,7 +753,8 @@ defmodule TrifleApp.Exports.MonitorLayout do
        ) do
     widget_id = alert_target_widget_id(monitor, target, alert)
 
-    if rendered_widget?(rendered_widget_ids, widget_id) do
+    if rendered_widget?(rendered_widget_ids, widget_id) and
+         AlertSeries.matches_target?(alert, target) do
       case AlertEvaluator.evaluate_points(alert, target.source_path, target.points) do
         {:ok, result} ->
           overlay = AlertEvaluator.overlay(result)
@@ -824,28 +837,29 @@ defmodule TrifleApp.Exports.MonitorLayout do
       |> AlertSeries.resolved_final_targets(monitor)
       |> filter_snapshot_targets(opts)
 
-    base_y = AlertSeries.source_widget_height()
+    {groups, _bottom} =
+      for target <- targets,
+          children = alert_group_widgets(monitor, target, alerts),
+          children != [],
+          reduce: {[], AlertSeries.source_widget_height()} do
+        {groups, y} ->
+          height = alert_group_height(length(children))
 
-    if alerts == [] do
-      []
-    else
-      targets
-      |> Enum.with_index()
-      |> Enum.map(fn {target, index} ->
-        group_height = alert_group_height(length(alerts))
+          group = %{
+            "id" => alert_group_id(monitor, target),
+            "type" => "group",
+            "title" => target.name,
+            "w" => 12,
+            "h" => height,
+            "x" => 0,
+            "y" => y,
+            "children" => children
+          }
 
-        %{
-          "id" => alert_group_id(monitor, target),
-          "type" => "group",
-          "title" => target.name,
-          "w" => 12,
-          "h" => group_height,
-          "x" => 0,
-          "y" => base_y + index * group_height,
-          "children" => alert_group_widgets(monitor, target, alerts)
-        }
-      end)
-    end
+          {[group | groups], y + height}
+      end
+
+    Enum.reverse(groups)
   end
 
   defp alert_widget_groups(%Monitor{} = monitor, nil, _opts) do
@@ -889,7 +903,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
   defp alert_group_widgets(%Monitor{} = monitor, target, alerts) do
     alerts
-    |> Enum.reject(&is_nil(&1.id))
+    |> Enum.filter(&(&1.id && AlertSeries.matches_target?(&1, target)))
     |> Enum.with_index()
     |> Enum.map(fn {alert, index} ->
       %{

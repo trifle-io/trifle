@@ -271,7 +271,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
       })
 
       update_alert_statuses(monitor, evaluations, deliveries, scheduled_for)
-      maybe_update_trigger_status(monitor, triggered)
+      maybe_update_trigger_status(monitor, evaluations)
     else
       false ->
         Traces.trace("Series export contains data: false", state: :warning)
@@ -459,19 +459,20 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp fetch_stats_struct(_), do: nil
 
-  defp evaluate_each_alert(%Monitor{} = monitor, stats) do
+  defp evaluate_each_alert(%Monitor{} = monitor, targets) do
     monitor.alerts
     |> Enum.with_index(1)
     |> Enum.map(fn {%Alert{} = alert, alert_position} ->
       Traces.trace("Alert #{alert_position} of #{length(monitor.alerts)}", head: true)
       Traces.tag("alert:#{alert.id}")
-      Traces.trace("Evaluate #{length(stats)} resolved targets")
+      matching_targets = Enum.filter(targets, &AlertSeries.matches_target?(alert, &1))
+      Traces.trace("Evaluate #{length(matching_targets)} resolved targets")
 
       target_results =
-        stats
+        matching_targets
         |> Enum.with_index(1)
         |> Enum.map(fn {target, target_position} ->
-          Traces.trace("Target #{target_position} of #{length(stats)}")
+          Traces.trace("Target #{target_position} of #{length(matching_targets)}")
 
           case AlertEvaluator.evaluate_points(alert, target.source_path, target.points) do
             {:ok, result} ->
@@ -494,6 +495,10 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
       Traces.trace("Alert aggregate: status=#{status}; triggered=#{result.triggered?}")
       %{alert: alert, result: result, status: status, target_results: target_results}
     end)
+  end
+
+  defp aggregate_target_results(%Alert{} = alert, []) do
+    {:skipped, AlertSeries.no_matching_targets_result(alert)}
   end
 
   defp aggregate_target_results(%Alert{} = alert, target_results) do
@@ -603,7 +608,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
       |> Enum.reject(&is_nil/1)
       |> MapSet.new()
 
-    evaluation_failed? = Enum.any?(evaluations, &(&1.status != :ok))
+    evaluation_failed? = Enum.any?(evaluations, &(&1.status == :error))
 
     delivery_failed? =
       Enum.any?(deliveries, fn
@@ -640,6 +645,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
       delivery_succeeded? -> "alerted"
       delivery_suppressed? and triggered_any? -> "suppressed"
       triggered_any? -> "alerted"
+      Enum.all?(evaluations, &(&1.status == :skipped)) -> "skipped"
       true -> "passed"
     end
   end
@@ -662,6 +668,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp build_trigger_summary([], _deliveries, _evaluations, "passed"),
     do: "No alerts triggered."
+
+  defp build_trigger_summary([], _deliveries, _evaluations, "skipped"),
+    do: "No series matched the configured wildcard filters."
 
   defp build_trigger_summary(triggered, _deliveries, _evaluations, "alerted") do
     triggered_ids = triggered |> Enum.map(&alert_label/1) |> Enum.join(", ")
@@ -711,7 +720,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         _ -> false
       end)
 
-    evaluation_failed? = Enum.any?(evaluations, &(&1.status != :ok))
+    evaluation_failed? = Enum.any?(evaluations, &(&1.status == :error))
 
     cond do
       delivery_failed? and triggered_ids != "" ->
@@ -1001,11 +1010,17 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end
   end
 
-  defp maybe_update_trigger_status(%Monitor{type: :alert} = monitor, triggered) do
+  defp maybe_update_trigger_status(%Monitor{type: :alert} = monitor, evaluations) do
     new_status =
-      case Enum.any?(triggered, fn
-             %{result: %{triggered?: true}} -> true
-             _ -> false
+      case Enum.any?(evaluations, fn
+             %{result: %{triggered?: true}} ->
+               true
+
+             %{status: :skipped, alert: %Alert{status: status}} ->
+               status in [:alerted, :suppressed]
+
+             _ ->
+               false
            end) do
         true -> :alerting
         false -> :idle
@@ -1049,11 +1064,13 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
           Map.put(acc, id, {:suppressed, meta})
       end)
 
-    Enum.each(evaluations, fn %{
-                                alert: %Alert{id: id} = alert,
-                                result: result,
-                                status: eval_status
-                              } ->
+    evaluations
+    |> Enum.reject(&(&1.status == :skipped))
+    |> Enum.each(fn %{
+                      alert: %Alert{id: id} = alert,
+                      result: result,
+                      status: eval_status
+                    } ->
       base_alert = Map.get(alerts_by_id, id, alert)
       triggered? = Map.get(result, :triggered?, false)
       delivery_entry = Map.get(delivery_info, id)

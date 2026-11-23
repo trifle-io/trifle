@@ -26,6 +26,7 @@ import Sortable from "sortablejs"
 import { createChartsLoader } from "./charts_loader.mjs"
 import { GridStack } from "gridstack"
 import "./components/delivery_selector"
+import "./components/wildcard_values"
 import { registerDashboardRuntimeHooks } from "./widgets/dashboard_runtime"
 import { formatCompactNumber } from "./utils/formatting";
 import { sanitizeRichHtml } from "./utils/sanitize_html";

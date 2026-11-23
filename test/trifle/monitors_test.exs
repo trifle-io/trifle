@@ -6,9 +6,11 @@ defmodule Trifle.MonitorsTest do
   alias Trifle.AccountsFixtures
   alias Trifle.Monitors
   alias Trifle.Monitors.{Alert, Monitor}
+  alias Trifle.Monitors.Jobs.EvaluateMonitor
   alias Trifle.Organizations
   alias Trifle.Integrations.{DiscordChannel, DiscordInstallation, SlackChannel, SlackInstallation}
   alias Trifle.Repo
+  alias Trifle.Stats.Source
 
   setup do
     user = AccountsFixtures.user_fixture()
@@ -29,6 +31,70 @@ defmodule Trifle.MonitorsTest do
   end
 
   describe "monitors" do
+    test "scheduled alerts evaluate only matching wildcard series", %{
+      user: user,
+      membership: membership,
+      organization: organization
+    } do
+      database = Trifle.OrganizationsFixtures.database_fixture(%{organization: organization})
+      {:ok, _} = Organizations.setup_database(database)
+
+      monitor =
+        monitor_fixture(user, membership, database, %{
+          "alert_metric_key" => "duration/#{Ecto.UUID.generate()}",
+          "alert_metric_path" => "duration.*",
+          "alert_granularity" => "1m",
+          "status" => "paused"
+        })
+
+      [{:ok, quick}, {:ok, slow}, {:ok, missing}] =
+        for {operator, value, threshold, status} <- [
+              {:in, "quick", 1000, :passed},
+              {:not_in, "quick", 5000, :passed},
+              {:in, "missing", 1000, :alerted}
+            ] do
+          Monitors.create_alert(monitor, membership, %{
+            status: status,
+            settings: %{
+              threshold_value: threshold,
+              wildcard_filter_operator: operator,
+              wildcard_filter_values: [value]
+            }
+          })
+        end
+
+      config = database |> Source.from_database() |> Source.stats_config()
+      config = %{config | buffer_enabled: false, storage: nil}
+      now = DateTime.utc_now()
+
+      for sample_at <- [DateTime.add(now, -60, :second), now] do
+        assert {:ok, _} =
+                 Trifle.Stats.track(
+                   monitor.alert_metric_key,
+                   sample_at,
+                   %{"duration" => %{"quick" => 100, "slow" => 10_000}},
+                   config
+                 )
+      end
+
+      assert :ok = EvaluateMonitor.perform(%Oban.Job{args: %{"monitor_id" => monitor.id}})
+      assert [execution] = Monitors.list_recent_executions(monitor)
+
+      evaluations = Map.new(execution.details["evaluations"], &{&1["alert_id"], &1})
+
+      assert %{"triggered" => false, "targets" => [%{"source_path" => "duration.quick"}]} =
+               evaluations[quick.id]
+
+      assert %{"triggered" => true, "targets" => [%{"source_path" => "duration.slow"}]} =
+               evaluations[slow.id]
+
+      assert %{"status" => "skipped", "targets" => []} = evaluations[missing.id]
+      assert Monitors.get_alert!(monitor, missing.id).status == :alerted
+      assert Monitors.get_alert!(monitor, missing.id).last_evaluated_at == nil
+      assert [%{"alert_id" => alert_id, "event" => "triggered"}] = execution.details["deliveries"]
+      assert alert_id == slow.id
+    end
+
     test "list_monitors_for_membership/3 returns monitors for membership", %{
       user: user,
       membership: membership,

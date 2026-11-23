@@ -6,7 +6,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   alias Ecto.UUID
   alias Phoenix.LiveView.JS
   alias Trifle.Monitors
-  alias Trifle.Monitors.Alert
+  alias Trifle.Monitors.{Alert, AlertSeries}
 
   @ai_default %{
     status: :idle,
@@ -48,16 +48,36 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
   def update(assigns, socket) do
     alert = assigns.alert || %Alert{monitor_id: assigns.monitor.id}
-    changeset = assigns[:changeset] || Monitors.change_alert(alert, %{})
+
+    changeset =
+      if socket.assigns[:alert] == alert do
+        socket.assigns.changeset
+      else
+        assigns[:changeset] || Monitors.change_alert(alert, %{})
+      end
+
     ai_state = socket.assigns[:ai_state] || @ai_default
 
-    {:ok,
-     socket
-     |> assign(assigns)
-     |> assign(:alert, alert)
-     |> assign(:action, assigns[:action] || :new)
-     |> assign(:ai_state, ai_state)
-     |> put_changeset(changeset)}
+    socket =
+      socket
+      |> assign(assigns)
+      |> assign(:alert, alert)
+      |> assign(:action, assigns[:action] || :new)
+      |> assign(:ai_state, ai_state)
+      |> put_changeset(changeset)
+
+    socket =
+      if changed?(socket, :stats) or changed?(socket, :monitor) do
+        assign(
+          socket,
+          :wildcard_suggestions,
+          AlertSeries.wildcard_values(assigns.stats, assigns.monitor)
+        )
+      else
+        socket
+      end
+
+    {:ok, socket}
   end
 
   @impl true
@@ -287,6 +307,19 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                       Select an analysis strategy to configure its parameters.
                     </div>
                 <% end %>
+
+                <div class="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <.input
+                    field={settings_form[:wildcard_filter_operator]}
+                    type="select"
+                    label="Wildcard match"
+                    options={[{"Match", :in}, {"Exclude", :not_in}]}
+                  />
+                  <.wildcard_values_input
+                    field={settings_form[:wildcard_filter_values]}
+                    suggestions={@wildcard_suggestions}
+                  />
+                </div>
               </.inputs_for>
             </div>
           </.form>
@@ -342,6 +375,98 @@ defmodule TrifleApp.MonitorAlertFormComponent do
     """
   end
 
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :suggestions, :list, required: true
+
+  defp wildcard_values_input(%{field: field} = assigns) do
+    assigns =
+      assign(assigns, :values, Jason.encode!(List.wrap(field.value) |> Enum.filter(&is_binary/1)))
+
+    ~H"""
+    <div
+      id={@field.id}
+      phx-update="ignore"
+      x-data="wildcardValues($el)"
+      data-values={@values}
+      data-suggestions={Jason.encode!(@suggestions)}
+      class="space-y-2"
+    >
+      <.label for={"#{@field.id}-input"}>Wildcard values</.label>
+      <div class="relative">
+        <input
+          id={"#{@field.id}-input"}
+          x-ref="entry"
+          type="text"
+          name="alert[wildcard_filter_input]"
+          role="combobox"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Type or select a value"
+          aria-autocomplete="list"
+          aria-controls={"#{@field.id}-suggestions"}
+          aria-describedby={"#{@field.id}-help"}
+          x-bind:aria-expanded="showSuggestions"
+          x-bind:aria-activedescendant="activeOptionId"
+          x-on:input="onInput($event)"
+          x-on:focus="open = true"
+          x-on:blur="add(); open = false"
+          x-on:keydown.enter="onEnter($event)"
+          x-on:keydown.arrow-down="highlight($event, 1)"
+          x-on:keydown.arrow-up="highlight($event, -1)"
+          x-on:keydown.escape="onEscape($event)"
+          class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+        />
+        <ul
+          id={"#{@field.id}-suggestions"}
+          x-ref="listbox"
+          role="listbox"
+          aria-label="Wildcard value suggestions"
+          x-show="showSuggestions"
+          x-cloak
+          class="absolute inset-x-0 top-full z-10 mt-1 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+        >
+          <template x-for="(value, index) in filtered" x-bind:key="value">
+            <li
+              x-bind:id="optionId(index)"
+              role="option"
+              x-bind:aria-selected="index === activeIndex"
+              x-bind:class="index === activeIndex && 'bg-teal-500/10'"
+              x-on:mousedown.prevent
+              x-on:click="add(value)"
+              x-text="value"
+              class="cursor-pointer px-3 py-2 text-sm text-slate-700 [overflow-wrap:anywhere] hover:bg-teal-500/10 dark:text-slate-200"
+            >
+            </li>
+          </template>
+        </ul>
+      </div>
+      <input type="hidden" name={@field.name <> "[]"} value="" x-ref="changeInput" />
+      <div class="flex flex-wrap gap-2" x-show="values.length > 0" x-cloak>
+        <template x-for="value in values" x-bind:key="value">
+          <span class="inline-flex max-w-full items-center gap-1 rounded-full bg-teal-600/10 px-2 py-0.5 text-[0.7rem] font-semibold text-teal-800 dark:text-teal-200">
+            <span class="min-w-0 [overflow-wrap:anywhere]" x-text="value"></span>
+            <input type="hidden" name={@field.name <> "[]"} x-bind:value="value" />
+            <button
+              type="button"
+              class="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-slate-500 hover:text-rose-500 focus-visible:outline-2 focus-visible:outline-teal-500 dark:text-slate-400"
+              x-bind:aria-label="`Remove ${value}`"
+              x-on:click="remove(value)"
+            >
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </span>
+        </template>
+      </div>
+      <p id={"#{@field.id}-help"} class="text-xs text-slate-500 dark:text-slate-400">
+        Enter the part matched by <code>*</code>, such as <code>basic</code>
+        for <code>products.*</code>.
+        Use commas or Enter to add values. Leave empty to evaluate all series.
+      </p>
+    </div>
+    <.error :for={error <- @field.errors}>{translate_error(error)}</.error>
+    """
+  end
+
   def handle_event("ai_recommend", %{"variant" => variant_param}, socket) do
     case normalize_variant(variant_param) do
       nil ->
@@ -356,6 +481,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
         now = DateTime.utc_now()
         request_id = UUID.generate()
         strategy = socket.assigns.strategy || :threshold
+        alert = Changeset.apply_changes(socket.assigns.changeset)
 
         notify_parent(
           {:ai_recommendation_request,
@@ -363,7 +489,8 @@ defmodule TrifleApp.MonitorAlertFormComponent do
              component_id: socket.assigns.id,
              request_id: request_id,
              variant: variant,
-             strategy: strategy
+             strategy: strategy,
+             alert: alert
            }}
         )
 
@@ -375,7 +502,8 @@ defmodule TrifleApp.MonitorAlertFormComponent do
            message: nil,
            started_at: now,
            tick_at: now,
-           finished_at: nil
+           finished_at: nil,
+           wildcard_filter: wildcard_filter_params(socket)
          })}
     end
   end
@@ -384,13 +512,15 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   def handle_event("validate", %{"alert" => params}, socket) do
     changeset =
       socket.assigns.alert
-      |> Monitors.change_alert(params)
+      |> Monitors.change_alert(merge_wildcard_input(params))
       |> Map.put(:action, :validate)
 
     {:noreply, put_changeset(socket, changeset)}
   end
 
   def handle_event("save", %{"alert" => params}, socket) do
+    params = merge_wildcard_input(params)
+
     case socket.assigns.action do
       :new -> create_alert(socket, params)
       :edit -> update_alert(socket, params)
@@ -421,6 +551,22 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
   defp maybe_assign_id(socket, _), do: socket
 
+  defp merge_wildcard_input(%{"wildcard_filter_input" => input, "settings" => settings} = params)
+       when is_binary(input) and is_map(settings) do
+    values = input |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+
+    update_in(params, ["settings", "wildcard_filter_values"], &(List.wrap(&1) ++ values))
+  end
+
+  defp merge_wildcard_input(params), do: params
+
+  defp wildcard_filter_params(socket) do
+    socket.assigns.changeset
+    |> Changeset.get_field(:settings)
+    |> Map.take([:wildcard_filter_operator, :wildcard_filter_values])
+    |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+  end
+
   defp apply_ai_recommendation(socket, %{request_id: request_id} = result) do
     current_state = socket.assigns[:ai_state] || @ai_default
 
@@ -442,6 +588,20 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           finished_at: finished_at
         })
 
+      current_state[:wildcard_filter] &&
+          current_state.wildcard_filter != wildcard_filter_params(socket) ->
+        finished_at = result[:finished_at] || DateTime.utc_now()
+
+        assign(socket, :ai_state, %{
+          status: :stale,
+          variant: current_state.variant,
+          request_id: nil,
+          message: "The wildcard filter changed. Request a fresh suggestion.",
+          started_at: current_state.started_at,
+          tick_at: finished_at,
+          finished_at: finished_at
+        })
+
       true ->
         variant =
           result.variant
@@ -458,7 +618,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
         params = %{
           "analysis_strategy" => to_string(strategy),
-          "settings" => result.settings || %{}
+          "settings" => Map.merge(result.settings || %{}, wildcard_filter_params(socket))
         }
 
         changeset =
