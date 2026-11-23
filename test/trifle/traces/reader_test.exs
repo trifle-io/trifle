@@ -16,6 +16,26 @@ defmodule Trifle.Traces.ReaderTest do
     end
   end
 
+  # Supports ranged reads and reports every body request it serves.
+  defmodule RangedS3 do
+    def get_object(objects, bucket, key) do
+      send(self(), {:s3_read, bucket, key})
+      Map.fetch!(objects, {bucket, key})
+    end
+
+    def object_size(objects, bucket, key) do
+      case objects[{bucket, key}] do
+        nil -> nil
+        body -> byte_size(body)
+      end
+    end
+
+    def get_object_range(objects, bucket, key, first, last) do
+      send(self(), {:s3_range, key, first, last})
+      binary_part(Map.fetch!(objects, {bucket, key}), first, last - first + 1)
+    end
+  end
+
   defmodule BakerReader do
     def search(membership, id, filters),
       do: Reader.search(membership, id, filters, Process.get(__MODULE__))
@@ -269,6 +289,25 @@ defmodule Trifle.Traces.ReaderTest do
     end
   end
 
+  defp body(artifact), do: artifact |> Reader.stream(0, artifact.size - 1) |> Enum.join()
+
+  defp handle(name, body) do
+    %{
+      name: name,
+      size: byte_size(body),
+      source_id: "test",
+      read: fn first, last -> binary_part(body, first, last - first + 1) end
+    }
+  end
+
+  defp collect_ranges(acc \\ []) do
+    receive do
+      {:s3_range, _key, first, last} -> collect_ranges([{first, last} | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
   defp baker_tool(tool, args, ctx),
     do: Tools.execute(tool, Jason.encode!(args), %{membership: ctx.membership})
 
@@ -335,8 +374,13 @@ defmodule Trifle.Traces.ReaderTest do
     assert {:ok, [%{entry: %{message: "Last entry"}}]} =
              apply(Reader, :part, args ++ [2, ctx.opts])
 
-    assert {:ok, %{name: "report.txt", body: "hello"}} =
+    assert {:ok, %{name: "report.txt", size: 5} = artifact} =
              apply(Reader, :artifact, args ++ [1, 1, ctx.opts])
+
+    assert body(artifact) == "hello"
+    assert Reader.bytes(artifact, 1, 3) == {:ok, "ell"}
+    assert Reader.bytes(artifact, 3, 99) == {:ok, "lo"}
+    assert Reader.head(artifact, 2) == {:ok, "he"}
 
     assert {:error, :not_found} = apply(Reader, :artifact, args ++ [1, 0, ctx.opts])
     assert {:error, :not_found} = apply(Reader, :part, args ++ [3, ctx.opts])
@@ -399,47 +443,149 @@ defmodule Trifle.Traces.ReaderTest do
            end) == ""
   end
 
-  test "oversized recorded attachments are rejected before reading their bodies", ctx do
-    alias Trifle.Traces.Driver.Data.{S3, Encoding}
-    prefix = "7/traces/jobs/App.Worker/reader-test/"
-    artifact_key = prefix <> "artifacts/report.txt"
+  describe "attachments in S3 storage" do
+    setup ctx do
+      alias Trifle.Traces.Driver.Data.{S3, Encoding}
+      prefix = "7/traces/jobs/App.Worker/reader-test/"
+      body = :binary.copy("0123456789", 10)
 
-    for {limit, size} <- [{nil, 64 * 1024 * 1024 + 1}, {6, 7}] do
-      if limit, do: Application.put_env(:trifle, Reader, max_artifact_bytes: limit)
+      objects = %{
+        # The entry understates its size; only the stored size counts.
+        {"bucket", prefix <> "data_1.json.gz"} =>
+          Encoding.pack_entries([%{type: :media, message: "report.txt", size: 1}], true),
+        {"bucket", prefix <> "artifacts/report.txt"} => body
+      }
 
-      data =
-        S3.new(
-          buckets: ["bucket"],
-          adapter: S3Adapter,
-          gzip: true,
-          client: %{
-            {"bucket", prefix <> "data_1.json.gz"} =>
-              Encoding.pack_entries([%{type: :media, message: "report.txt", size: size}], true)
-          }
-        )
-
+      data = S3.new(buckets: ["bucket"], adapter: RangedS3, gzip: true, client: objects)
       opts = [configuration: fn _ -> %{ctx.config | data_driver: data} end]
+      args = [ctx.membership, ctx.database.id, ctx.record.reference, 1, 0, opts]
+      %{args: args, body: body, artifact_key: prefix <> "artifacts/report.txt"}
+    end
 
-      assert {:error, :too_large} =
-               Reader.artifact(ctx.membership, ctx.database.id, ctx.record.reference, 1, 0, opts)
+    test "an attachment over the limit is refused by its stored size, without reading it", ctx do
+      Application.put_env(:trifle, Reader, max_artifact_bytes: 99)
+      assert {:error, :too_large} = apply(Reader, :artifact, ctx.args)
 
-      assert_received {:s3_read, "bucket", _part_key}
-      refute_received {:s3_read, "bucket", ^artifact_key}
+      Application.put_env(:trifle, Reader, max_artifact_bytes: 100)
+      assert {:ok, %{size: 100}} = apply(Reader, :artifact, ctx.args)
+
+      # Opening an attachment reads the part that lists it, never its body.
+      key = ctx.artifact_key
+      refute_received {:s3_read, "bucket", ^key}
+      refute_received {:s3_range, _, _, _}
+    end
+
+    test "streams in chunks and never asks storage for more than one chunk", ctx do
+      Application.put_env(:trifle, Reader, artifact_chunk_bytes: 30)
+      assert {:ok, artifact} = apply(Reader, :artifact, ctx.args)
+
+      assert artifact |> Reader.stream(0, 99) |> Enum.map(&byte_size/1) == [30, 30, 30, 10]
+      assert body(artifact) == ctx.body
+      assert artifact |> Reader.stream(25, 64) |> Enum.join() == binary_part(ctx.body, 25, 40)
+
+      ranges = collect_ranges()
+      assert {25, 54} in ranges and {55, 64} in ranges
+      assert Enum.all?(ranges, fn {first, last} -> last - first < 30 end)
+      key = ctx.artifact_key
+      refute_received {:s3_read, "bucket", ^key}
+
+      # The stream is lazy: taking the first chunk reads only the first chunk.
+      assert artifact |> Reader.stream(0, 99) |> Enum.take(1) == [binary_part(ctx.body, 0, 30)]
+      assert collect_ranges() == [{0, 29}]
+    end
+
+    test "a text preview reads only the leading window of a large attachment", ctx do
+      assert {:ok, artifact} = apply(Reader, :artifact, ctx.args)
+
+      big = %{
+        artifact
+        | size: 10_000_000,
+          read: fn first, last ->
+            send(self(), {:read, first, last})
+            :binary.copy("a", last - first + 1)
+          end
+      }
+
+      assert %{truncated: true, text: text} = Reader.preview(big)
+      assert String.length(text) == 32_768
+      assert_received {:read, 0, 131_071}
+      refute_received {:read, _, _}
+    end
+
+    test "storage failures while reading bytes are reported, not raised", ctx do
+      assert {:ok, artifact} = apply(Reader, :artifact, ctx.args)
+      broken = %{artifact | read: fn _, _ -> raise "storage went away" end}
+
+      log =
+        capture_log(fn ->
+          assert Reader.bytes(broken, 0, 9) == {:error, :storage_unavailable}
+          assert Reader.preview(broken) == %{text: nil, truncated: false}
+        end)
+
+      assert log =~ "operation=artifact_bytes"
+      assert log =~ "storage went away"
     end
   end
 
-  test "attachment limit allows its boundary and checks bodies with missing or inaccurate sizes",
+  test "parts over the configured size limits are refused", ctx do
+    alias Trifle.Traces.Driver.Data.File, as: FileData
+    path = Path.join(System.tmp_dir!(), "trace-reader-#{Ecto.UUID.generate()}")
+    on_exit(fn -> File.rm_rf!(path) end)
+    entries = [%{type: :text, message: String.duplicate("a", 200_000)}]
+    FileData.write_part(FileData.new(path: path, gzip: true), ctx.record, 1, entries)
+
+    read = fn limits ->
+      data = FileData.new([path: path, gzip: true] ++ limits)
+      opts = [configuration: fn _ -> %{ctx.config | data_driver: data} end]
+      Reader.part(ctx.membership, ctx.database.id, ctx.record.reference, 1, opts)
+    end
+
+    assert {:ok, [_]} = read.(max_part_bytes: 100_000, max_part_inflated_bytes: 1_000_000)
+
+    assert capture_log(fn ->
+             # Too big as stored, and a small archive that inflates too far.
+             assert {:error, :too_large} = read.(max_part_bytes: 10)
+             assert {:error, :too_large} = read.(max_part_inflated_bytes: 50_000)
+           end) == ""
+  end
+
+  test "tenant databases read parts with the configured size limits", ctx do
+    # Real credentials, since building the configuration opens the index pool.
+    {:ok, database} =
+      Organizations.update_database(ctx.database, %{
+        database_name: Trifle.Repo.config()[:database],
+        username: Trifle.Repo.config()[:username],
+        password: Trifle.Repo.config()[:password]
+      })
+
+    on_exit(fn ->
+      Trifle.DatabasePools.PostgresPoolSupervisor.stop_postgres_pool(database.id)
+    end)
+
+    Application.put_env(:trifle, Reader, max_part_bytes: 123, max_part_inflated_bytes: 456)
+
+    assert %{max_part_bytes: 123, max_part_inflated_bytes: 456} =
+             Trifle.Traces.Source.Database.configuration(database).data_driver
+
+    Application.delete_env(:trifle, Reader)
+
+    assert %{max_part_bytes: 16_777_216, max_part_inflated_bytes: 67_108_864} =
+             Trifle.Traces.Source.Database.configuration(database).data_driver
+  end
+
+  test "the attachment limit is checked against the stored size, whatever the entry declares",
        ctx do
     Application.put_env(:trifle, Reader, max_artifact_bytes: 5)
     args = [ctx.membership, ctx.database.id, ctx.record.reference, 1, 0, ctx.opts]
 
-    for size <- [nil, 0, 5] do
+    for size <- [nil, 0, 5, 5_000] do
       Memory.write_part(ctx.config.data_driver, ctx.record, 1, [
         %{"type" => "media", "message" => "report.txt", "size" => size}
       ])
 
       Memory.write_artifact(ctx.config.data_driver, ctx.record, "report.txt", payload: "hello")
-      assert {:ok, %{body: "hello"}} = apply(Reader, :artifact, args)
+      assert {:ok, %{size: 5} = artifact} = apply(Reader, :artifact, args)
+      assert body(artifact) == "hello"
 
       Memory.write_artifact(ctx.config.data_driver, ctx.record, "report.txt", payload: "longer")
       assert {:error, :too_large} = apply(Reader, :artifact, args)
@@ -536,12 +682,21 @@ defmodule Trifle.Traces.ReaderTest do
 
   test "text previews are bounded and binary attachments are download only" do
     assert %{truncated: true, text: text} =
-             Reader.preview(%{name: "report.txt", body: String.duplicate("東", 40_000)})
+             Reader.preview(handle("report.txt", String.duplicate("東", 50_000)))
 
     assert String.length(text) == 32_768
     assert String.valid?(text)
-    assert %{text: nil} = Reader.preview(%{name: "report.txt", body: <<255>>})
-    assert %{text: nil} = Reader.preview(%{name: "image.png", body: "not displayed"})
+
+    # The window may end inside a character of a longer file without spoiling it.
+    assert %{truncated: true, text: cut} =
+             Reader.preview(handle("report.txt", "a" <> String.duplicate("東", 50_000)))
+
+    assert String.valid?(cut) and String.starts_with?(cut, "a東")
+
+    assert Reader.preview(handle("report.txt", "short")) == %{text: "short", truncated: false}
+    assert Reader.preview(handle("report.txt", "")) == %{text: "", truncated: false}
+    assert %{text: nil} = Reader.preview(handle("report.txt", <<255>>))
+    assert %{text: nil} = Reader.preview(handle("image.png", "not displayed"))
   end
 
   test "reads compressed S3 parts and attachments from the recorded bucket after configuration changes",
@@ -577,8 +732,10 @@ defmodule Trifle.Traces.ReaderTest do
     artifact_key = prefix <> "artifacts/report.txt"
     refute_received {:s3_read, "bucket", ^artifact_key}
 
-    assert {:ok, %{body: "S3 text"}} =
+    assert {:ok, %{size: 7} = artifact} =
              Reader.artifact(ctx.membership, ctx.database.id, ctx.record.reference, 1, 0, opts)
+
+    assert body(artifact) == "S3 text"
   end
 
   test "File reads unpack compressed parts and reject malicious record paths", ctx do
@@ -590,8 +747,11 @@ defmodule Trifle.Traces.ReaderTest do
     FileData.write_artifact(data, ctx.record, "report.txt", payload: "File text")
     opts = [configuration: fn _ -> %{ctx.config | data_driver: data} end]
 
-    assert {:ok, %{body: "File text"}} =
+    assert {:ok, artifact} =
              Reader.artifact(ctx.membership, ctx.database.id, ctx.record.reference, 1, 0, opts)
+
+    assert body(artifact) == "File text"
+    assert Reader.bytes(artifact, 5, 8) == {:ok, "text"}
 
     Postgres.create(ctx.config.index_driver, %{
       ctx.record
@@ -600,6 +760,14 @@ defmodule Trifle.Traces.ReaderTest do
     })
 
     assert {:error, :not_found} = Reader.part(ctx.membership, ctx.database.id, "unsafe", 1, opts)
+
+    # Retention is part of the storage path too, and a Mongo index can hold anything.
+    index = Trifle.Traces.Driver.Index.Memory.new()
+    Trifle.Traces.Driver.Index.Memory.create(index, %{ctx.record | retention: "../.."})
+    opts = [configuration: fn _ -> %{ctx.config | index_driver: index, data_driver: data} end]
+
+    assert {:error, :not_found} =
+             Reader.part(ctx.membership, ctx.database.id, ctx.record.reference, 1, opts)
   end
 
   test "Mongo sources use the same scoped reader contract with a stubbed index", ctx do
@@ -618,8 +786,10 @@ defmodule Trifle.Traces.ReaderTest do
     assert {:ok, %{traces: [_]}} =
              Reader.search(ctx.membership, database.id, [segment: "jobs"], opts)
 
-    assert {:ok, %{body: "hello"}} =
+    assert {:ok, artifact} =
              Reader.artifact(ctx.membership, database.id, ctx.record.reference, 1, 1, opts)
+
+    assert body(artifact) == "hello"
   end
 
   test "removing trace configuration revokes read access immediately", ctx do

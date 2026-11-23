@@ -113,11 +113,19 @@ defmodule Trifle.Traces.Source.Database do
   end
 
   defp data_driver(_database, %{"data_driver" => "file"} = config) do
-    FileData.new(path: config["data_path"], gzip: config["gzip"])
+    FileData.new([path: config["data_path"], gzip: config["gzip"]] ++ part_limits())
   end
 
   defp data_driver(database, %{"data_driver" => "s3"} = config) do
-    S3Data.new(s3_driver_options(database, config))
+    S3Data.new(s3_driver_options(database, config) ++ part_limits())
+  end
+
+  # Payload parts are decoded whole and live in storage the tenant controls.
+  defp part_limits do
+    [
+      max_part_bytes: Trifle.Traces.Reader.setting(:max_part_bytes),
+      max_part_inflated_bytes: Trifle.Traces.Reader.setting(:max_part_inflated_bytes)
+    ]
   end
 
   defp setup_index!(%Database{driver: "postgres"} = database, config) do

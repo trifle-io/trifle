@@ -102,6 +102,10 @@ defmodule Trifle.Traces.Reader do
   end
 
   # A download is addressed by an entry, never by a caller-supplied object name.
+  #
+  # Returns a handle, not the body: the name, the size as stored (the `size` an
+  # entry declares is written by the tenant and is not trusted), and a function
+  # that reads an inclusive byte range. Nothing is read from the artifact here.
   def artifact(membership, id, reference, part, row, opts \\ []) do
     read(membership, id, :artifact, opts, fn config ->
       record = find!(config, reference)
@@ -109,32 +113,88 @@ defmodule Trifle.Traces.Reader do
       entry = if is_integer(row) and row >= 0, do: Enum.at(entries, row)
 
       descriptor = if is_map(entry), do: attachment(entry, part, row)
-      %{name: name, size: size} = descriptor || throw(:not_found)
+      %{name: name} = descriptor || throw(:not_found)
 
-      limit = max_artifact_bytes()
-      if is_number(size) and size > limit, do: throw(:too_large)
+      size = Trifle.Traces.artifact_size(record, name, config: config)
+      unless is_integer(size) and size >= 0, do: throw(:not_found)
+      if size > setting(:max_artifact_bytes), do: throw(:too_large)
 
-      body = Trifle.Traces.read_artifact(record, name, config: config)
-      unless is_binary(body), do: throw(:not_found)
-      if byte_size(body) > limit, do: throw(:too_large)
-      %{name: name, body: body}
+      %{
+        name: name,
+        size: size,
+        source_id: id,
+        read: &Trifle.Traces.read_artifact_range(record, name, &1, &2, config: config)
+      }
     end)
   end
 
-  def field(map, key), do: Map.get(map, key, Map.get(map, Atom.to_string(key)))
+  @doc """
+  Lazily reads bytes `first..last` of an artifact in fixed-size chunks, so a
+  large file never sits in memory. Raises if storage fails part-way.
+  """
+  def stream(%{read: read}, first, last) do
+    chunk = setting(:artifact_chunk_bytes)
 
-  def text_artifact?(%{name: name, body: body}) do
-    String.ends_with?(String.downcase(name), [".txt", ".log", ".json", ".csv"]) and
-      String.valid?(body)
+    Stream.unfold(first, fn
+      offset when offset > last ->
+        nil
+
+      offset ->
+        stop = min(offset + chunk - 1, last)
+        {read.(offset, stop), stop + 1}
+    end)
   end
 
-  def preview(%{body: body} = artifact) do
-    if text_artifact?(artifact) do
-      # Slice by characters so a multibyte character is never cut in half.
-      %{text: String.slice(body, 0, 32_768), truncated: String.length(body) > 32_768}
-    else
-      %{text: nil, truncated: false}
+  @doc "Reads bytes `first..last` of an artifact, clamped to its size."
+  def bytes(%{size: size, read: read, source_id: id}, first, last) do
+    last = min(last, size - 1)
+    started = System.monotonic_time(:millisecond)
+
+    try do
+      {:ok, if(first > last, do: "", else: read.(first, last))}
+    rescue
+      error ->
+        log_failure(id, :artifact_bytes, started, :error, error, __STACKTRACE__)
+        {:error, :storage_unavailable}
+    catch
+      kind, reason ->
+        log_failure(id, :artifact_bytes, started, kind, reason, __STACKTRACE__)
+        {:error, :storage_unavailable}
     end
+  end
+
+  def head(artifact, count), do: bytes(artifact, 0, count - 1)
+
+  def field(map, key), do: Map.get(map, key, Map.get(map, Atom.to_string(key)))
+
+  def text_name?(name),
+    do: String.ends_with?(String.downcase(name), [".txt", ".log", ".json", ".csv"])
+
+  @preview_chars 32_768
+  # Enough bytes for the preview even if every character takes four.
+  @preview_bytes @preview_chars * 4
+
+  # Only the leading window is read, however large the attachment is.
+  def preview(%{name: name, size: size} = artifact) do
+    with true <- text_name?(name),
+         {:ok, window} <- head(artifact, @preview_bytes),
+         text when is_binary(text) <- valid_prefix(window, size > byte_size(window)) do
+      %{
+        text: String.slice(text, 0, @preview_chars),
+        truncated: size > byte_size(window) or String.length(text) > @preview_chars
+      }
+    else
+      _ -> %{text: nil, truncated: false}
+    end
+  end
+
+  # A window cut out of a longer file may end inside a multibyte character.
+  defp valid_prefix(window, cut?) do
+    Enum.find_value(if(cut?, do: 0..3, else: [0]), fn drop ->
+      keep = byte_size(window) - drop
+      text = if keep >= 0, do: binary_part(window, 0, keep)
+      if text && String.valid?(text), do: text
+    end)
   end
 
   defp read(membership, id, operation, opts, fun) do
@@ -148,6 +208,15 @@ defmodule Trifle.Traces.Reader do
         {:ok, fun.(provider.(source.record))}
       end
     rescue
+      # A payload part over the configured size limits.
+      error in Trifle.Traces.Error ->
+        if error.reason == :too_large do
+          {:error, :too_large}
+        else
+          log_failure(id, operation, started, :error, error, __STACKTRACE__)
+          {:error, :storage_unavailable}
+        end
+
       error ->
         log_failure(id, operation, started, :error, error, __STACKTRACE__)
         {:error, :storage_unavailable}
@@ -172,9 +241,18 @@ defmodule Trifle.Traces.Reader do
     end)
   end
 
-  defp max_artifact_bytes do
-    Application.get_env(:trifle, __MODULE__, [])
-    |> Keyword.get(:max_artifact_bytes, 64 * 1024 * 1024)
+  @defaults [
+    # A policy limit on what one download may pull through the app; attachments
+    # are streamed, so this no longer bounds memory.
+    max_artifact_bytes: 1024 * 1024 * 1024,
+    artifact_chunk_bytes: 4 * 1024 * 1024,
+    # Parts are decoded whole, so these do bound memory.
+    max_part_bytes: 16 * 1024 * 1024,
+    max_part_inflated_bytes: 64 * 1024 * 1024
+  ]
+
+  def setting(key) do
+    Application.get_env(:trifle, __MODULE__, []) |> Keyword.get(key, @defaults[key])
   end
 
   defp find!(config, reference) do
@@ -183,7 +261,10 @@ defmodule Trifle.Traces.Reader do
   end
 
   defp read_part!(config, record, part) do
+    # Reference, key and retention come from the tenant's index row and become
+    # part of the storage path.
     unless is_integer(part) and part >= 1 and part <= record.parts and
+             is_integer(record.retention) and record.retention > 0 and
              safe_component?(record.reference) and safe_key?(record.key),
            do: throw(:not_found)
 

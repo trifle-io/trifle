@@ -58,14 +58,28 @@ defmodule TrifleApp.TraceAttachmentControllerTest do
 
     on_exit(fn ->
       Driver.call(config.index_driver, :delete, [reference])
+      # Each test opens its own tenant pool; leaving them open exhausts Postgres.
+      Trifle.DatabasePools.PostgresPoolSupervisor.stop_postgres_pool(database.id)
       File.rm_rf!(path)
     end)
 
     url =
       ~p"/traces/attachment?#{%{source_id: database.id, reference: reference, part: 1, row: 0}}"
 
-    %{user: user, config: config, record: record, url: url}
+    %{
+      user: user,
+      config: config,
+      record: record,
+      url: url,
+      database_id: database.id,
+      membership: %Organizations.OrganizationMembership{organization_id: org.id}
+    }
   end
+
+  defp restore_reader_config(nil), do: Application.delete_env(:trifle, Trifle.Traces.Reader)
+
+  defp restore_reader_config(config),
+    do: Application.put_env(:trifle, Trifle.Traces.Reader, config)
 
   test "authenticated downloads use persisted entries, and other organizations cannot fetch them",
        %{conn: conn, user: user, url: url} do
@@ -96,17 +110,74 @@ defmodule TrifleApp.TraceAttachmentControllerTest do
   end
 
   test "oversized downloads and inline previews return 413 without attachment contents", ctx do
+    previous = Application.get_env(:trifle, Trifle.Traces.Reader)
+    on_exit(fn -> restore_reader_config(previous) end)
+
+    # The limit applies to the stored size; an entry cannot understate its way past it.
     Driver.call(ctx.config.data_driver, :write_part, [
       ctx.record,
       1,
-      [%{type: :media, message: "report.txt", size: 64 * 1024 * 1024 + 1}]
+      [%{type: :media, message: "report.txt", size: 1}]
     ])
+
+    Application.put_env(:trifle, Trifle.Traces.Reader, max_artifact_bytes: 17)
 
     for suffix <- ["", "&inline=true"] do
       result = ctx.conn |> recycle() |> log_in_user(ctx.user) |> get(ctx.url <> suffix)
       assert response(result, 413) == "Attachment exceeds the configured size limit"
       refute result.resp_body =~ "private attachment"
     end
+
+    Application.put_env(:trifle, Trifle.Traces.Reader, max_artifact_bytes: 18)
+    result = ctx.conn |> recycle() |> log_in_user(ctx.user) |> get(ctx.url)
+    assert response(result, 200) == "private attachment"
+  end
+
+  test "downloads are sent in chunks with their full length declared", ctx do
+    previous = Application.get_env(:trifle, Trifle.Traces.Reader)
+    on_exit(fn -> restore_reader_config(previous) end)
+    Application.put_env(:trifle, Trifle.Traces.Reader, artifact_chunk_bytes: 1000)
+
+    body = :crypto.strong_rand_bytes(4321)
+    put_attachment(ctx, "dump.bin", body)
+
+    result = ctx.conn |> log_in_user(ctx.user) |> get(ctx.url)
+    assert result.state == :chunked
+    assert response(result, 200) == body
+    assert get_resp_header(result, "content-length") == ["4321"]
+    assert get_resp_header(result, "content-type") == ["application/octet-stream"]
+
+    assert hd(get_resp_header(result, "content-disposition")) =~
+             ~s(attachment; filename="dump.bin")
+  end
+
+  test "a download that fails part-way is cut short instead of finishing normally", ctx do
+    previous = Application.get_env(:trifle, Trifle.Traces.Reader)
+    on_exit(fn -> restore_reader_config(previous) end)
+    Application.put_env(:trifle, Trifle.Traces.Reader, artifact_chunk_bytes: 10)
+    put_attachment(ctx, "dump.bin", :crypto.strong_rand_bytes(100))
+
+    # The file shrinks after its size was read, as if storage dropped out mid-transfer.
+    path =
+      Path.join(
+        ctx.config.data_driver.path,
+        "7/jobs/download/#{ctx.record.reference}/artifacts/dump.bin"
+      )
+
+    {:ok, artifact} =
+      Trifle.Traces.Reader.artifact(ctx.membership, ctx.database_id, ctx.record.reference, 1, 0)
+
+    File.write!(path, "short")
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert_raise TrifleApp.TraceDownload.Interrupted, fn ->
+          TrifleApp.TraceDownload.send_artifact(log_in_user(ctx.conn, ctx.user), artifact)
+        end
+      end)
+
+    assert log =~ "[TraceDownload]"
+    assert log =~ "interrupted"
   end
 
   test "images and videos are served inline with validated types and private headers", ctx do

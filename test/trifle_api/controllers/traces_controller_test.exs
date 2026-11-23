@@ -182,6 +182,27 @@ defmodule TrifleApi.TracesControllerTest do
              conn |> request(token, other.id, ~p"/api/v1/traces") |> json_response(404)
   end
 
+  test "a token cannot reach a trace source in another organization", %{conn: conn} = ctx do
+    other_user = user_fixture()
+
+    {:ok, other_org, _membership} =
+      Organizations.create_organization_with_owner(%{name: "Other"}, other_user)
+
+    app_entitlement_fixture(other_org)
+    foreign = create_scoped_token!(other_user, other_org.id, :database, ctx.id, true, true)
+
+    for path <- [
+          ~p"/api/v1/traces",
+          ~p"/api/v1/traces/calc-b",
+          ~p"/api/v1/traces/calc-b/entries",
+          ~p"/api/v1/traces/calc-b/attachments",
+          ~p"/api/v1/traces/calc-b/attachments/unknown"
+        ] do
+      assert %{"errors" => %{"detail" => "Bad token"}} =
+               conn |> request(foreign, ctx.id, path) |> json_response(401)
+    end
+  end
+
   test "searches with index filters and paginates without skipping tied timestamps",
        %{conn: conn} =
          ctx do
@@ -342,17 +363,31 @@ defmodule TrifleApi.TracesControllerTest do
              |> read(ctx, ~p"/api/v1/traces/calc-b/attachments/unknown")
              |> json_response(404)
 
+    # The limit applies to the stored size, not to the size an entry declares.
     Payload.write_part(ctx.config.data_driver, ctx.record, 1, [
-      %{type: :media, message: "oversized.txt", size: 64 * 1024 * 1024 + 1},
+      %{type: :media, message: "oversized.txt", size: 1},
       %{type: :media, message: "../outside.txt", size: 1}
     ])
+
+    Payload.write_artifact(ctx.config.data_driver, ctx.record, "oversized.txt",
+      payload: "over the limit"
+    )
 
     assert %{
              "data" => [%{"name" => "oversized.txt", "download_url" => oversized_url}]
            } = conn |> read(ctx, ~p"/api/v1/traces/calc-b/attachments") |> json_response(200)
 
+    previous = Application.get_env(:trifle, Reader)
+    Application.put_env(:trifle, Reader, max_artifact_bytes: 13)
+
     assert %{"errors" => %{"detail" => "Attachment exceeds the configured size limit"}} =
              conn |> read(ctx, oversized_url) |> json_response(413)
+
+    if previous,
+      do: Application.put_env(:trifle, Reader, previous),
+      else: Application.delete_env(:trifle, Reader)
+
+    assert conn |> read(ctx, oversized_url) |> response(200) == "over the limit"
 
     assert %{"errors" => %{"detail" => _}} =
              conn |> read(ctx, download_url) |> json_response(404)

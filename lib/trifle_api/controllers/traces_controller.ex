@@ -46,6 +46,7 @@ defmodule TrifleApi.TracesController do
          {:ok, page, next} <- entry_page(entries, record, part, row, limit) do
       json(conn, %{data: page, pagination: %{next: next}})
     else
+      {:error, :too_large} -> render_error(conn, :part_too_large)
       {:error, reason} -> render_error(conn, reason)
     end
   end
@@ -58,6 +59,7 @@ defmodule TrifleApi.TracesController do
         pagination: %{next_after_part: result.next_part}
       })
     else
+      {:error, :too_large} -> render_error(conn, :part_too_large)
       {:error, reason} -> render_error(conn, reason)
     end
   end
@@ -65,11 +67,7 @@ defmodule TrifleApi.TracesController do
   def download_attachment(conn, %{"reference" => reference, "attachment_id" => id}) do
     with {:ok, part, row} <- attachment_location(id),
          {:ok, artifact} <- read(conn, :artifact, [reference, part, row]) do
-      send_download(conn, {:binary, artifact.body},
-        filename: artifact.name,
-        content_type: "application/octet-stream",
-        disposition: :attachment
-      )
+      TrifleApp.TraceDownload.send_artifact(conn, artifact)
     else
       {:error, reason} -> render_error(conn, reason)
     end
@@ -267,6 +265,9 @@ defmodule TrifleApi.TracesController do
 
   defp render_error(conn, :too_large),
     do: error_response(conn, 413, "Attachment exceeds the configured size limit")
+
+  defp render_error(conn, :part_too_large),
+    do: error_response(conn, 413, "Trace part exceeds the configured size limit")
 
   defp render_error(conn, :storage_unavailable),
     do: error_response(conn, 503, "Trace storage is unavailable")

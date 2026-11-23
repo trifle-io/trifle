@@ -73,7 +73,7 @@ defmodule Trifle.MixProject do
        override: true},
       {:trifle_traces,
        git: "https://github.com/trifle-io/trifle_traces.git",
-       ref: "5bcd86f9324fadd6ea1250f96d6b6014f762e898"},
+       ref: "fa85b27313de5f1a28378406caf44b8686be98b7"},
       {:mongodb_driver, "~> 1.2.0"},
       {:myxql, "~> 0.7.0"},
       {:redix, "~> 1.3.0"},

@@ -155,11 +155,17 @@ defmodule Trifle.Chat.TraceTools do
   defp read_trace(reader, membership, page_args, %{section: "attachment"} = position) do
     %{source_id: id, reference: reference} = page_args
 
+    # Only the requested page is read from storage, whatever the file size.
     with {:ok, artifact} <-
            reader.artifact(membership, id, reference, position.part, position.row),
-         :ok <- check(Reader.text_artifact?(artifact), "The attachment is not readable text."),
-         :ok <- check(valid_offset?(artifact.body, position.offset), "Invalid attachment offset.") do
-      {text, next} = text_chunk(artifact.body, position.offset, @page_bytes)
+         :ok <- check(Reader.text_name?(artifact.name), "The attachment is not readable text."),
+         :ok <-
+           check(valid_offset?(artifact.size, position.offset), "Invalid attachment offset."),
+         {:ok, window} <-
+           Reader.bytes(artifact, position.offset, position.offset + @page_bytes - 1),
+         {:ok, text} <- attachment_text(window, position.offset) do
+      next = position.offset + byte_size(text)
+      next = if next < artifact.size, do: next
 
       {:ok,
        %{
@@ -423,10 +429,20 @@ defmodule Trifle.Chat.TraceTools do
   defp next_part(part, count) when part < count, do: %{part: part + 1, row: 0, offset: 0}
   defp next_part(_, _), do: nil
 
-  defp valid_offset?(_text, 0), do: true
+  defp valid_offset?(_size, 0), do: true
+  defp valid_offset?(size, offset), do: offset < size
 
-  defp valid_offset?(text, offset),
-    do: offset < byte_size(text) and :binary.at(text, offset) not in 128..191
+  # A page starts on a character boundary and is cut back to one at the end.
+  defp attachment_text(<<first, _::binary>>, offset) when offset > 0 and first in 128..191,
+    do: error("Invalid attachment offset.")
+
+  defp attachment_text(window, _offset) do
+    text = String.byte_slice(window, 0, byte_size(window))
+
+    if String.valid?(text) and (text != "" or window == ""),
+      do: {:ok, text},
+      else: error("The attachment is not readable text.")
+  end
 
   defp text_chunk(text, offset, limit) do
     chunk = String.byte_slice(text, offset, limit)
